@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,18 +20,16 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicLong;
 
+import com.exactpro.th2.common.schema.factory.CommonFactory;
 import org.apache.kafka.clients.consumer.CommitFailedException;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -55,12 +53,15 @@ public class KafkaConnection implements Runnable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KafkaConnection.class);
 
+    private final CommonFactory factory;
     private final MessageProcessor messageProcessor;
     private final Consumer<String, byte[]> consumer;
     private final KafkaConfigurationSettings settings;
     private final AtomicLong firstSequence;
 
-    public KafkaConnection(KafkaConfigurationSettings settings, MessageProcessor messageProcessor) {
+    public KafkaConnection(CommonFactory factory, MessageProcessor messageProcessor) {
+        this.factory = factory;
+        settings = factory.getCustomConfiguration(KafkaConfigurationSettings.class);
         Properties properties = new Properties();
         properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, settings.getBootstrapServers());
         properties.put(ConsumerConfig.GROUP_ID_CONFIG, settings.getGroupId());
@@ -71,7 +72,6 @@ public class KafkaConnection implements Runnable {
         properties.put(ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, settings.getReconnectBackoffMaxMs());
         consumer = new KafkaConsumer<>(properties);
         this.messageProcessor = messageProcessor;
-        this.settings = settings;
         Instant now = Instant.now();
         firstSequence = new AtomicLong(now.getEpochSecond() * NANOSECONDS_IN_SECOND + now.getNano());
     }
@@ -79,7 +79,8 @@ public class KafkaConnection implements Runnable {
     @Override
     public void run() {
         try {
-            consumer.subscribe(settings.getTopicToSessionAliasMap().keySet());
+            final var topics = settings.getTopicToSessionAliasMap().keySet();
+            consumer.subscribe(topics);
             ConsumerRecords<String, byte[]> records;
             do {
                 records = consumer.poll(Duration.ofMillis(DURATION_IN_MILLIS));
@@ -100,29 +101,23 @@ public class KafkaConnection implements Runnable {
 
             while (!currentThread.isInterrupted()) {
                 for (ConsumerRecord<String, byte[]> record : records) {
-                    MessageID messageID = MessageID.newBuilder()
+                    MessageID messageID = factory.newMessageIDBuilder()
                             .setConnectionId(ConnectionID.newBuilder()
                                     .setSessionAlias(settings.getTopicToSessionAliasMap().get(record.topic()))
                                     .build())
                             .setDirection(Direction.FIRST)
                             .setSequence(getSequence())
+                            .setTimestamp(MessageUtils.toTimestamp(Instant.ofEpochSecond(record.timestamp())))
                             .build();
                     messageProcessor.process(RawMessage.newBuilder()
-                            .setMetadata(RawMessageMetadata.newBuilder()
-                                    .setId(messageID)
-                                    .setTimestamp(MessageUtils.toTimestamp(Instant.ofEpochSecond(record.timestamp())))
-                                    .build())
+                            .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
                             .setBody(ByteString.copyFrom(record.value()))
                             .build());
-
                 }
                 if (!records.isEmpty()) {
-                    consumer.commitAsync(new OffsetCommitCallback() {
-                        public void onComplete(Map<TopicPartition,
-                                OffsetAndMetadata> offsets, Exception exception) {
-                            if (exception != null) {
-                                LOGGER.error("Commit failed for offsets {}", offsets, exception);
-                            }
+                    consumer.commitAsync((offsets, exception) -> {
+                        if (exception != null) {
+                            LOGGER.error("Commit failed for offsets {}", offsets, exception);
                         }
                     });
                 }

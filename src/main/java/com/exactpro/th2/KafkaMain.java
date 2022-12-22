@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,7 +69,7 @@ public class KafkaMain {
                 messageProcessor.close();
             });
             ExecutorService executorService = Executors.newSingleThreadExecutor();
-            executorService.execute(new KafkaConnection(settings, messageProcessor));
+            executorService.execute(new KafkaConnection(factory, messageProcessor));
             disposer.register(() -> {
                 LOGGER.info("Closing executor service");
                 executorService.shutdownNow();
@@ -104,7 +104,6 @@ public class KafkaMain {
         if (settings.getTimespan() <= 0) {
             throw new IllegalArgumentException("Timespan must be positive. Please, check the configuration. " + settings.getTimespan());
         }
-
     }
 
     public static class MessageRouterSubscriber<T extends MessageOrBuilder> extends DisposableSubscriber<T> implements Closeable {

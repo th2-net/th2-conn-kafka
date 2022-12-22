@@ -25,7 +25,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class KafkaConfigurationSettings {
 
     /**
-     * Match topic with sessianAlias
+     * Match topic with sessionAlias
      */
     @JsonProperty(required = true, value = "topicToAlias")
     private Map<String, String> topicToSessionAliasMap = new HashMap<>();
