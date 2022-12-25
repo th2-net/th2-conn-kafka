@@ -30,6 +30,9 @@ public class KafkaConfigurationSettings {
     @JsonProperty(required = true, value = "topicToAlias")
     private Map<String, String> topicToSessionAliasMap = new HashMap<>();
 
+    @JsonProperty(required = true)
+    private String sessionGroup = "";
+
     /**
      * URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster
      */
@@ -81,6 +84,9 @@ public class KafkaConfigurationSettings {
         return topicToSessionAliasMap;
     }
 
+    public String getSessionGroup() {
+        return sessionGroup;
+    }
 
     public String getBootstrapServers() {
         return bootstrapServers;

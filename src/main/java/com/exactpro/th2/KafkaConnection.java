@@ -104,6 +104,7 @@ public class KafkaConnection implements Runnable {
                     MessageID messageID = factory.newMessageIDBuilder()
                             .setConnectionId(ConnectionID.newBuilder()
                                     .setSessionAlias(settings.getTopicToSessionAliasMap().get(record.topic()))
+                                    .setSessionGroup(settings.getSessionGroup())
                                     .build())
                             .setDirection(Direction.FIRST)
                             .setSequence(getSequence())

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,13 +22,10 @@ import java.io.Closeable;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-import org.apache.commons.lang3.builder.EqualsBuilder;
-import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.exactpro.th2.KafkaMain.MessageRouterSubscriber;
-import com.exactpro.th2.common.grpc.Direction;
 import com.exactpro.th2.common.grpc.RawMessage;
 import com.exactpro.th2.common.grpc.RawMessageBatch;
 import com.exactpro.th2.configuration.KafkaConfigurationSettings;
@@ -63,52 +60,13 @@ public class MessageProcessor implements Closeable {
     public void close() {
         LOGGER.info("Shutdown pipeline scheduler");
         MESSAGE_PROCESSOR_SCHEDULER.shutdown();
-        LOGGER.info("Complite pipeline publisher");
+        LOGGER.info("Complete pipeline publisher");
         processor.onComplete();
     }
 
-    private @NonNull Flowable<GroupedFlowable<SessionDirectionKey, RawMessage>> createPipeline() {
+    private @NonNull Flowable<GroupedFlowable<String, RawMessage>> createPipeline() {
         return processor.observeOn(MESSAGE_PROCESSOR_SCHEDULER)
-                .groupBy(SessionDirectionKey::new);
-    }
-
-
-
-    private static class SessionDirectionKey {
-        private final String sessionAlias;
-        private final Direction direction;
-
-        public SessionDirectionKey(RawMessage message) {
-            this.sessionAlias = message.getMetadata().getId().getConnectionId().getSessionAlias();
-            direction = message.getMetadata().getId().getDirection();
-        }
-
-        @Override
-        public boolean equals(Object obj) {
-            if (this == obj) {
-                return true;
-            }
-
-            if (obj == null || getClass() != obj.getClass()) {
-                return false;
-            }
-
-            SessionDirectionKey second = (SessionDirectionKey)obj;
-
-            return new EqualsBuilder()
-                    .append(sessionAlias, second.sessionAlias)
-                    .append(direction, second.direction)
-                    .isEquals();
-        }
-
-        @Override
-        public int hashCode() {
-            return new HashCodeBuilder(17, 37)
-                    .append(sessionAlias)
-                    .append(direction)
-                    .toHashCode();
-        }
-
+                .groupBy(msg -> msg.getMetadata().getId().getConnectionId().getSessionGroup());
     }
 
     @SuppressWarnings("ParameterNameDiffersFromOverriddenParameter")
