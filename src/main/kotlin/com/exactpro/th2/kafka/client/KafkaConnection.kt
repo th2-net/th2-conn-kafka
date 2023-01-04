@@ -30,9 +30,15 @@ import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.consumer.ConsumerRecords
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.consumer.OffsetAndMetadata
+import org.apache.kafka.clients.producer.KafkaProducer
+import org.apache.kafka.clients.producer.Producer
+import org.apache.kafka.clients.producer.ProducerConfig
+import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.ByteArrayDeserializer
+import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.apache.kafka.common.serialization.StringDeserializer
+import org.apache.kafka.common.serialization.StringSerializer
 import java.time.Duration
 import java.time.Instant
 import java.util.Properties
@@ -53,8 +59,33 @@ class KafkaConnection(private val factory: CommonFactory, private val messagePro
             ))
         }
     )
+
+    private val producer: Producer<String, ByteArray> = KafkaProducer(
+        Properties().apply {
+            putAll(mapOf(
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to settings.bootstrapServers,
+                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to ByteArraySerializer::class.java
+            ))
+        }
+    )
+
     private val firstSequence = Instant.now().let {
         AtomicLong(it.epochSecond * NANOSECONDS_IN_SECOND + it.nano)
+    }
+
+    fun send(message: RawMessage) {
+        val alias = message.metadata.id.connectionId.sessionAlias
+        val topic = settings.aliasToTopic[alias] ?: error("Session alias not found.")
+        val value = message.body.toByteArray()
+
+        val kafkaRecord = ProducerRecord<String, ByteArray>(topic, value)
+
+        producer.send(kafkaRecord) { _, ex ->
+            if (ex != null) {
+                LOGGER.error(ex) { "Failed to send message to Kafka" }
+            }
+        }
     }
 
     override fun run() {

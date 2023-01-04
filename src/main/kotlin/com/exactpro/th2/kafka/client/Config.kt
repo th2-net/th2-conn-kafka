@@ -75,11 +75,17 @@ class Config (
      */
     val reconnectBackoffMaxMs: Int = 1000
 ) {
+    val aliasToTopic: MutableMap<String, String> = HashMap(topicToAlias.size)
+
     init {
         require(topicToAlias.isNotEmpty()) { "No topics was provided. Please, check the configuration" }
+
         topicToAlias.forEach { (topic: String, alias: String) ->
             require(alias.isNotEmpty()) { "Session alias can't be empty. Please, check the configuration for $topic" }
+            require(alias !in aliasToTopic) { "Session alias '$alias' duplicated" }
+            aliasToTopic += alias to topic
         }
+
         require(reconnectBackoffMaxMs > 0) { "ReconnectBackoffMaxMs must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
         require(reconnectBackoffMs > 0) { "ReconnectBackoffMs must be positive. Please, check the configuration. $reconnectBackoffMs" }
         require(batchSize > 0) { "Batch size must be positive. Please, check the configuration. $batchSize" }

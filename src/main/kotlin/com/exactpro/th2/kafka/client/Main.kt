@@ -18,8 +18,10 @@
 
 package com.exactpro.th2.kafka.client
 
+import com.exactpro.th2.common.grpc.RawMessageBatch
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.factory.CommonFactory
+import com.exactpro.th2.common.schema.message.MessageListener
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.google.protobuf.MessageOrBuilder
 import io.reactivex.rxjava3.subscribers.DisposableSubscriber
@@ -32,6 +34,7 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 private val LOGGER = KotlinLogging.logger {}
+private val INPUT_QUEUE_ATTRIBUTE = "send"
 
 fun main(args: Array<String>) {
     val resources: Deque<Pair<String, () -> Unit>> = ConcurrentLinkedDeque()
@@ -52,12 +55,32 @@ fun main(args: Array<String>) {
 
     runCatching {
         val config: Config = factory.getCustomConfiguration(Config::class.java)
-        val messageProcessor = MessageProcessor({ MessageRouterSubscriber(factory.messageRouterRawBatch) }, config)
+        val messageRouterRawBatch = factory.messageRouterRawBatch
+        val messageProcessor = MessageProcessor({ MessageRouterSubscriber(messageRouterRawBatch) }, config)
             .apply { resources += "processor" to ::close }
+
+        val connection = KafkaConnection(factory, messageProcessor)
         Executors.newSingleThreadExecutor().apply {
             resources += "executor service" to { this.shutdownNow() }
-            execute(KafkaConnection(factory, messageProcessor))
+            execute(connection)
         }
+
+        val listener = MessageListener<RawMessageBatch> { _, batch ->
+            messageRouterRawBatch.send(batch, )
+            batch.messagesList.forEach {
+                connection.send(it)
+                LOGGER.info { "Incoming message" }
+            }
+        }
+
+        runCatching {
+            messageRouterRawBatch.subscribe(listener, INPUT_QUEUE_ATTRIBUTE)
+        }.onSuccess {
+            resources += "queue listener" to it::unsubscribe
+        }.onFailure {
+            throw IllegalStateException("Failed to subscribe to input queue", it)
+        }
+
     }.onFailure {
         LOGGER.error(it) { "Error during working with Kafka connection. Exiting the program" }
         exitProcess(2)
