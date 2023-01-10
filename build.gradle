@@ -48,11 +48,12 @@ jar {
 dependencies {
     implementation 'com.exactpro.th2:common:5.0.0-dev-version-5-3539375667-SNAPSHOT'
 
+    implementation 'io.reactivex.rxjava3:rxkotlin:3.0.1'
+
     implementation 'org.slf4j:slf4j-log4j12:2.0.6'
     implementation 'org.slf4j:slf4j-api:1.7.36'
 
-    implementation group: 'org.apache.kafka', name: 'kafka_2.13', version: '3.3.1'
-    implementation 'io.reactivex.rxjava3:rxjava:3.0.4'
+    implementation 'org.apache.kafka:kafka_2.13:3.3.1'
     implementation 'io.github.microutils:kotlin-logging:3.0.4'
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.7.2'

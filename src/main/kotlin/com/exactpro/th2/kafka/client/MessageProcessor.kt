@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
+import com.exactpro.th2.common.message.direction
+import com.exactpro.th2.common.message.sequence
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import io.reactivex.rxjava3.core.Flowable
 import io.reactivex.rxjava3.flowables.GroupedFlowable
@@ -61,31 +63,32 @@ class MessageProcessor(
             LOGGER.info { "Subscribed to pipeline" }
         }
 
-        override fun onError(throwable: Throwable) = LOGGER.error(throwable) { "Upstream threw error" }
-        override fun onComplete() = LOGGER.info { "Upstream is completed" }
-
         override fun onNext(flowable: Flowable<RawMessage>) {
             val messageConnectable = flowable.publish()
             createPackAndPublishPipeline(messageConnectable, rawSubscriberFactory, settings)
             messageConnectable.connect()
         }
 
-        companion object {
-            private fun createPackAndPublishPipeline(
-                messageConnectable: Flowable<RawMessage>,
-                rawSubscriberFactory: Supplier<MessageRouterSubscriber<RawMessageBatch>>,
-                settings: Config
-            ) {
-                val batchConnectable = messageConnectable
-                    .window(settings.timeSpan, settings.timeSpanUnit, MESSAGE_PROCESSOR_SCHEDULER, settings.batchSize)
-                    .concatMapSingle { it.toList() }
-                    .filter { it.isNotEmpty() }
-                    .map { RawMessageBatch.newBuilder().addAllMessages(it).build() }
-                    .publish()
-                batchConnectable.subscribe(rawSubscriberFactory.get())
-                batchConnectable.connect()
-                LOGGER.info { "Connected to publish batches group" }
-            }
+        override fun onError(throwable: Throwable) = LOGGER.error(throwable) { "Upstream threw error" }
+        override fun onComplete() = LOGGER.info { "Upstream is completed" }
+
+        private fun createPackAndPublishPipeline(
+            messageConnectable: Flowable<RawMessage>,
+            rawSubscriberFactory: Supplier<MessageRouterSubscriber<RawMessageBatch>>,
+            settings: Config
+        ) {
+            messageConnectable
+                .doOnNext { LOGGER.trace { "Message before window with sequence ${it.sequence} and direction ${it.direction}" } }
+                .window(settings.timeSpan, settings.timeSpanUnit, MESSAGE_PROCESSOR_SCHEDULER, settings.batchSize)
+                .concatMapSingle { it.toList() }
+                .filter { it.isNotEmpty() }
+                .map { RawMessageBatch.newBuilder().addAllMessages(it).build() }
+                .publish()
+                .apply {
+                    subscribe(rawSubscriberFactory.get())
+                    connect()
+                }
+            LOGGER.info { "Connected to publish batches group" }
         }
     }
 

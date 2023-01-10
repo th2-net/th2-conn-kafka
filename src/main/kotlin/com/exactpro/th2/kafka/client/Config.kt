@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,12 +42,16 @@ class Config (
     /**
      * If the period of inactivity is longer than this time, then start reading Kafka messages from the current moment
      */
-    val acceptableBreak: Long = 8L,
+    maxInactivityPeriod: Long = 8L,
 
     /**
-     * Time unit for `acceptableBreak` classification
+     * Time unit for `maxInactivityPeriod` classification
      */
-    val acceptableBreakTimeUnit: TimeUnit = TimeUnit.HOURS,
+    maxInactivityPeriodUnit: TimeUnit = TimeUnit.HOURS,
+
+    /**
+     * The size of one batch
+     */
     val batchSize: Long = 100L,
 
     /**
@@ -76,6 +80,7 @@ class Config (
     val reconnectBackoffMaxMs: Int = 1000
 ) {
     val aliasToTopic: MutableMap<String, String> = HashMap(topicToAlias.size)
+    val maxInactivityPeriodMillis = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod)
 
     init {
         require(topicToAlias.isNotEmpty()) { "No topics was provided. Please, check the configuration" }
@@ -89,7 +94,7 @@ class Config (
         require(reconnectBackoffMaxMs > 0) { "ReconnectBackoffMaxMs must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
         require(reconnectBackoffMs > 0) { "ReconnectBackoffMs must be positive. Please, check the configuration. $reconnectBackoffMs" }
         require(batchSize > 0) { "Batch size must be positive. Please, check the configuration. $batchSize" }
-        require(acceptableBreak > 0) { "AcceptableBreak must be positive. Please, check the configuration. $acceptableBreak" }
+        require(maxInactivityPeriod > 0) { "maxInactivityPeriod must be positive. Please, check the configuration. $maxInactivityPeriod" }
         require(timeSpan > 0) { "Time span must be positive. Please, check the configuration. $timeSpan" }
     }
 }

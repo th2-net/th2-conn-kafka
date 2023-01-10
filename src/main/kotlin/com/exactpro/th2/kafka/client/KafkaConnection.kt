@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,10 +24,8 @@ import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.google.protobuf.ByteString
 import mu.KotlinLogging
-import org.apache.kafka.clients.consumer.CommitFailedException
 import org.apache.kafka.clients.consumer.Consumer
 import org.apache.kafka.clients.consumer.ConsumerConfig
-import org.apache.kafka.clients.consumer.ConsumerRecords
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.clients.producer.KafkaProducer
@@ -42,20 +40,25 @@ import org.apache.kafka.common.serialization.StringSerializer
 import java.time.Duration
 import java.time.Instant
 import java.util.Properties
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
-class KafkaConnection(private val factory: CommonFactory, private val messageProcessor: MessageProcessor) : Runnable {
-    private val settings = factory.getCustomConfiguration(Config::class.java)
+class KafkaConnection(
+    private val factory: CommonFactory,
+    private val messageProcessor: MessageProcessor,
+    private val eventSender: EventSender
+) : Runnable {
+    private val config = factory.getCustomConfiguration(Config::class.java)
     private val consumer: Consumer<String, ByteArray> = KafkaConsumer(
         Properties().apply {
             putAll(mapOf(
-                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to settings.bootstrapServers,
-                ConsumerConfig.GROUP_ID_CONFIG to settings.groupId,
+                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to config.bootstrapServers,
+                ConsumerConfig.GROUP_ID_CONFIG to config.groupId,
                 ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to false,
                 ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
                 ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to ByteArrayDeserializer::class.java,
-                ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG to settings.reconnectBackoffMs,
-                ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG to settings.reconnectBackoffMaxMs
+                ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG to config.reconnectBackoffMs,
+                ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG to config.reconnectBackoffMaxMs
             ))
         }
     )
@@ -63,103 +66,119 @@ class KafkaConnection(private val factory: CommonFactory, private val messagePro
     private val producer: Producer<String, ByteArray> = KafkaProducer(
         Properties().apply {
             putAll(mapOf(
-                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to settings.bootstrapServers,
+                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to config.bootstrapServers,
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
-                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to ByteArraySerializer::class.java
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to ByteArraySerializer::class.java,
+                ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG to config.reconnectBackoffMs,
+                ProducerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG to config.reconnectBackoffMaxMs
             ))
         }
     )
 
-    private val firstSequence = Instant.now().let {
-        AtomicLong(it.epochSecond * NANOSECONDS_IN_SECOND + it.nano)
-    }
+    private fun createSequence(): () -> Long = Instant.now().run {
+        AtomicLong(epochSecond * TimeUnit.SECONDS.toNanos(1) + nano)
+    }::incrementAndGet
 
-    fun send(message: RawMessage) {
+    private val firstSequence = createSequence()
+    private val secondSequence = createSequence()
+
+    fun publish(message: RawMessage) {
         val alias = message.metadata.id.connectionId.sessionAlias
-        val topic = settings.aliasToTopic[alias] ?: error("Session alias not found.")
+        val topic = config.aliasToTopic[alias] ?: error("Session alias not found.")
         val value = message.body.toByteArray()
 
-        val kafkaRecord = ProducerRecord<String, ByteArray>(topic, value)
+        val messageID = message.metadata.id.toBuilder()
+            .setBookName(factory.boxConfiguration.bookName)
+            .setDirection(Direction.SECOND)
+            .setSequence(secondSequence())
+            .setTimestamp(Instant.now().toTimestamp())
+            .build()
 
-        producer.send(kafkaRecord) { _, ex ->
-            if (ex != null) {
-                LOGGER.error(ex) { "Failed to send message to Kafka" }
+        messageProcessor.process(
+            RawMessage.newBuilder()
+                .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
+                .setBody(message.body)
+                .build()
+        )
+
+        val kafkaRecord = ProducerRecord<String, ByteArray>(topic, value)
+        producer.send(kafkaRecord) { _, exception: Throwable? ->
+            when (exception) {
+                null -> {
+                    val msgText = "Message '${message.metadata.id}' sent to Kafka"
+                    LOGGER.info(msgText)
+                    eventSender.onEvent(msgText, "Send message", message)
+                }
+                else -> {
+                    val msgText = "Failed to send message '${message.metadata.id}' to Kafka"
+                    LOGGER.error(msgText, exception)
+                    eventSender.onEvent(msgText, "SendError", message, exception)
+                }
             }
         }
     }
 
     override fun run() {
         try {
-            val topics = settings.topicToAlias.keys
-            consumer.subscribe(topics)
-            var records: ConsumerRecords<String, ByteArray>
-            do {
-                records = consumer.poll(Duration.ofMillis(DURATION_IN_MILLIS))
-            } while (records.isEmpty)
-            for (record in records) {
-                if (System.currentTimeMillis() - record.timestamp() > convertedTime) {
-                    consumer.seekToEnd(topicPartitions)
-                    try {
-                        consumer.commitSync()
-                    } catch (e: CommitFailedException) {
-                        LOGGER.error(e) { "Commit failed" }
-                    }
-                    records = consumer.poll(Duration.ofMillis(DURATION_IN_MILLIS))
-                }
-                break
-            }
-            val currentThread = Thread.currentThread()
-            while (!currentThread.isInterrupted) {
-                for (record in records) {
-                    val messageID = factory.newMessageIDBuilder()
-                        .setConnectionId(
-                            ConnectionID.newBuilder()
-                                .setSessionAlias(settings.topicToAlias[record.topic()])
-                                .setSessionGroup(settings.sessionGroup)
-                                .build()
-                        )
-                        .setDirection(Direction.FIRST)
-                        .setSequence(sequence)
-                        .setTimestamp(Instant.ofEpochSecond(record.timestamp()).toTimestamp())
-                        .build()
-                    messageProcessor.process(
-                        RawMessage.newBuilder()
-                            .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
-                            .setBody(ByteString.copyFrom(record.value()))
-                            .build()
-                    )
-                }
+            consumer.subscribe(config.topicToAlias.keys)
+            while (!Thread.currentThread().isInterrupted) {
+                val records = consumer.poll(Duration.ofMillis(DURATION_IN_MILLIS))
+
                 if (!records.isEmpty) {
-                    consumer.commitAsync { offsets: Map<TopicPartition?, OffsetAndMetadata?>?, exception: Exception? ->
+                    val inactivityPeriod = System.currentTimeMillis() - records.first().timestamp()
+                    if (inactivityPeriod > config.maxInactivityPeriodMillis) {
+                        consumer.seekToEnd(getAllPartitions())
+                        val msgText = "Inactivity period exceeded ($inactivityPeriod ms). Skipping unread messages."
+                        LOGGER.info { msgText }
+                        eventSender.onEvent(msgText, "ConnectivityServiceEvent")
+                    } else {
+                        for (record in records) {
+                            val messageID = factory.newMessageIDBuilder()
+                                .setConnectionId(
+                                    ConnectionID.newBuilder()
+                                        .setSessionAlias(config.topicToAlias[record.topic()])
+                                        .setSessionGroup(config.sessionGroup)
+                                        .build()
+                                )
+                                .setDirection(Direction.FIRST)
+                                .setSequence(firstSequence())
+                                .setTimestamp(Instant.now().toTimestamp())
+                                .build()
+                            messageProcessor.process(
+                                RawMessage.newBuilder()
+                                    .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
+                                    .setBody(ByteString.copyFrom(record.value()))
+                                    .build()
+                            )
+                        }
+                    }
+
+                    consumer.commitAsync { offsets: Map<TopicPartition, OffsetAndMetadata>, exception: Exception? ->
                         if (exception != null) {
                             LOGGER.error(exception) { "Commit failed for offsets $offsets" }
                         }
                     }
                 }
-                records = consumer.poll(Duration.ofMillis(DURATION_IN_MILLIS))
             }
         } catch (e: RuntimeException) {
-            LOGGER.error(e) { "Failed to read message from kafka" }
+            val errorMessage = "Failed to read messages from kafka"
+            LOGGER.error(errorMessage, e)
+            eventSender.onEvent(errorMessage, "Error", exception =  e)
         } finally {
             consumer.wakeup()
             consumer.close()
         }
     }
 
-    private val sequence: Long
-        get() = firstSequence.incrementAndGet()
-    private val convertedTime = settings.acceptableBreakTimeUnit.toMillis(settings.acceptableBreak)
-    private val topicPartitions: List<TopicPartition>
-        get() {
-            val allPartitions: MutableList<TopicPartition> = ArrayList()
-            for (topic in settings.topicToAlias.keys) {
-                val partitions = consumer.partitionsFor(topic)
-                for (par in partitions) {
-                    allPartitions.add(TopicPartition(topic, par.partition()))
-                }
+    private fun getAllPartitions(): List<TopicPartition> {
+        val partitions: MutableList<TopicPartition> = ArrayList()
+        for (topic in config.topicToAlias.keys) {
+            for (partInfo in consumer.partitionsFor(topic)) {
+                partitions += TopicPartition(topic, partInfo.partition())
             }
-            return allPartitions
         }
+        return partitions
+    }
 
     companion object {
         private val LOGGER = KotlinLogging.logger {}

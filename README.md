@@ -11,8 +11,8 @@ This configuration should be specified in the custom configuration block in sche
     "topicName" : "session-alias"
   },
   "groupId": 1,
-  "acceptableBreak" : 8,
-  "acceptableBreakTimeUnit": "HOURS",
+  "maxInactivityPeriod" : 8,
+  "maxInactivityPeriodTimeUnit": "HOURS",
   "batchSize": 100,
   "timespan": 1000,
   "timespanUnit" : "MILLISECONDS",
@@ -25,8 +25,8 @@ Parameters:
 + session-alias - that session alias will be set for all messages sent by this component. **It should be unique for each "KafkaConnect" topic**;
 + groupId - that ID will be used for Kafka connection
 + bootstrapServers - URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster
-+ acceptableBreak - if the period of inactivity is longer than this time, then start reading Kafka messages from the current moment. Should be positive.
-+ timeUnit - time unit for `acceptableBreak` and `timespan` classification
++ maxInactivityPeriod - if the period of inactivity is longer than this time, then start reading Kafka messages from the current moment. Should be positive.
++ maxInactivityPeriodUnit - time unit for `maxInactivityPeriod`
   + DAYS
   + HOURS
   + MINUTES
@@ -35,7 +35,8 @@ Parameters:
   + MICROSECONDS
   + NANOSECONDS
 + batchSize - the size of one batch. Should be positive.
-+ timespan - The period router collects messages before it should be sent. Should be positive.
++ timeSpan - The period router collects messages before it should be sent. Should be positive.
++ timeSpanUnit time unit for `timeSpan`
 + reconnectBackoffMs - The amount of time in milliseconds to wait before attempting to reconnect to a given host. Should be positive.
 + reconnectBackoffMaxMs - The maximum amount of time in milliseconds to backoff/wait when reconnecting to a broker that 
           has repeatedly failed to connect. If provided, the backoff per host will increase 
