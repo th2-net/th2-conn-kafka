@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     id 'application'
     id 'com.palantir.docker' version '0.25.0'
@@ -21,7 +23,7 @@ repositories {
         url 'https://s01.oss.sonatype.org/content/repositories/releases/'
     }
 
-    configurations.all {
+    configurations.configureEach {
         resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
         resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
     }
@@ -43,14 +45,12 @@ jar {
 
 dependencies {
     api platform('com.exactpro.th2:bom:4.0.2')
-    implementation 'org.slf4j:slf4j-log4j12'
-    implementation 'org.slf4j:slf4j-api'
 
     implementation 'com.exactpro.th2:common:5.0.0-dev-version-5-3838510969-SNAPSHOT'
 
     implementation 'io.reactivex.rxjava3:rxkotlin:3.0.1'
     implementation 'org.apache.kafka:kafka_2.13:3.3.1'
-    implementation 'io.github.microutils:kotlin-logging:3.0.4'
+    implementation 'io.github.microutils:kotlin-logging:3.0.0'
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.7.2'
 }
@@ -62,7 +62,7 @@ test {
 applicationName = 'service'
 
 application {
-    mainClassName 'com.exactpro.th2.kafka.client.Main'
+    mainClass.set('com.exactpro.th2.kafka.client.Main')
 }
 
 distTar {
@@ -77,10 +77,6 @@ docker {
     copySpec.from(tarTree("$buildDir/distributions/${applicationName}.tar"))
 }
 
-compileKotlin {
-    kotlinOptions.jvmTarget = "11"
-}
-
-compileTestKotlin {
+tasks.withType(KotlinCompile).configureEach {
     kotlinOptions.jvmTarget = "11"
 }

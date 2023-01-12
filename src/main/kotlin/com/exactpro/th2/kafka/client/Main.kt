@@ -28,8 +28,7 @@ import com.exactpro.th2.common.schema.message.DeliveryMetadata
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.kafka.client.utility.storeEvent
 import mu.KotlinLogging
-import java.time.Instant
-import java.util.*
+import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -52,7 +51,7 @@ fun main(args: Array<String>) {
         shutdownLatch.countDown()
     })
 
-    val factory = args.runCatching { CommonFactory.createFromArguments(*args) }.getOrElse {
+    val factory = runCatching { CommonFactory.createFromArguments(*args) }.getOrElse {
         LOGGER.error(it) { "Failed to create common factory with arguments: ${args.joinToString(" ")}" }
         CommonFactory()
     }.apply { resources += "factory" to ::close }
@@ -63,15 +62,8 @@ fun main(args: Array<String>) {
         val messageProcessor = MessageProcessor({ MessageRouterSubscriber(messageRouterRawBatch) }, config)
             .apply { resources += "processor" to ::close }
 
-        val eventRouter = factory.eventBatchRouter
-        val rootEvent =  Event
-            .start()
-            .endTimestamp()
-            .name("Kafka client '${config.sessionGroup}' [${Instant.now()}]")
-            .type("Microservice")
-        val rootEventId = eventRouter.storeEvent(rootEvent, factory.boxConfiguration.bookName)
-        val eventSender = EventSender(eventRouter, rootEventId)
-        val connection = KafkaConnection(factory, messageProcessor, eventSender)
+        val eventSender = EventSender(factory.eventBatchRouter, factory.rootEventId)
+        val connection = KafkaConnection(config, factory, messageProcessor, eventSender)
         Executors.newSingleThreadExecutor().apply {
             resources += "executor service" to { this.shutdownNow() }
             execute(connection)

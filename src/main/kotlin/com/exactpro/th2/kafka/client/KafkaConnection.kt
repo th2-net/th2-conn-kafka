@@ -22,10 +22,11 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
 import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.factory.CommonFactory
-import com.google.protobuf.ByteString
+import com.google.protobuf.UnsafeByteOperations
 import mu.KotlinLogging
 import org.apache.kafka.clients.consumer.Consumer
 import org.apache.kafka.clients.consumer.ConsumerConfig
+import org.apache.kafka.clients.consumer.ConsumerRecords
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.clients.producer.KafkaProducer
@@ -44,11 +45,11 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 class KafkaConnection(
+    private val config: Config,
     private val factory: CommonFactory,
     private val messageProcessor: MessageProcessor,
     private val eventSender: EventSender
 ) : Runnable {
-    private val config = factory.getCustomConfiguration(Config::class.java)
     private val consumer: Consumer<String, ByteArray> = KafkaConsumer(
         Properties().apply {
             putAll(mapOf(
@@ -79,12 +80,12 @@ class KafkaConnection(
         AtomicLong(epochSecond * TimeUnit.SECONDS.toNanos(1) + nano)
     }::incrementAndGet
 
-    private val firstSequence = createSequence()
-    private val secondSequence = createSequence()
+    private val firstSequence: () -> Long = createSequence()
+    private val secondSequence: () -> Long = createSequence()
 
     fun publish(message: RawMessage) {
         val alias = message.metadata.id.connectionId.sessionAlias
-        val topic = config.aliasToTopic[alias] ?: error("Session alias not found.")
+        val topic = config.aliasToTopic[alias] ?: error("Session alias '$alias' not found.")
         val value = message.body.toByteArray()
 
         val messageID = message.metadata.id.toBuilder()
@@ -96,7 +97,7 @@ class KafkaConnection(
 
         messageProcessor.process(
             RawMessage.newBuilder()
-                .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
+                .setMetadata(message.metadata.toBuilder().setId(messageID))
                 .setBody(message.body)
                 .build()
         )
@@ -122,11 +123,11 @@ class KafkaConnection(
         try {
             consumer.subscribe(config.topicToAlias.keys)
             while (!Thread.currentThread().isInterrupted) {
-                val records = consumer.poll(Duration.ofMillis(DURATION_IN_MILLIS))
+                val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
 
                 if (!records.isEmpty) {
                     val inactivityPeriod = System.currentTimeMillis() - records.first().timestamp()
-                    if (inactivityPeriod > config.maxInactivityPeriodMillis) {
+                    if (inactivityPeriod > config.maxInactivityPeriod.inWholeMilliseconds) {
                         consumer.seekToEnd(getAllPartitions())
                         val msgText = "Inactivity period exceeded ($inactivityPeriod ms). Skipping unread messages."
                         LOGGER.info { msgText }
@@ -137,8 +138,7 @@ class KafkaConnection(
                                 .setConnectionId(
                                     ConnectionID.newBuilder()
                                         .setSessionAlias(config.topicToAlias[record.topic()])
-                                        .setSessionGroup(config.sessionGroup)
-                                        .build()
+                                        .apply { config.sessionGroup?.let { sessionGroup = it } }
                                 )
                                 .setDirection(Direction.FIRST)
                                 .setSequence(firstSequence())
@@ -147,21 +147,23 @@ class KafkaConnection(
                             messageProcessor.process(
                                 RawMessage.newBuilder()
                                     .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
-                                    .setBody(ByteString.copyFrom(record.value()))
+                                    .setBody(UnsafeByteOperations.unsafeWrap(record.value()))
                                     .build()
                             )
                         }
                     }
 
                     consumer.commitAsync { offsets: Map<TopicPartition, OffsetAndMetadata>, exception: Exception? ->
-                        if (exception != null) {
+                        if (exception == null) {
+                            LOGGER.trace { "Commit succeed for offsets $offsets" }
+                        } else {
                             LOGGER.error(exception) { "Commit failed for offsets $offsets" }
                         }
                     }
                 }
             }
-        } catch (e: RuntimeException) {
-            val errorMessage = "Failed to read messages from kafka"
+        } catch (e: Exception) {
+            val errorMessage = "Failed to read messages from Kafka"
             LOGGER.error(errorMessage, e)
             eventSender.onEvent(errorMessage, "Error", exception =  e)
         } finally {
@@ -182,7 +184,6 @@ class KafkaConnection(
 
     companion object {
         private val LOGGER = KotlinLogging.logger {}
-        private const val NANOSECONDS_IN_SECOND = 1_000_000_000L
-        private const val DURATION_IN_MILLIS = 100L
+        private val POLL_TIMEOUT = Duration.ofMillis(100L)
     }
 }

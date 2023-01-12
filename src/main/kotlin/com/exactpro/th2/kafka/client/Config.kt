@@ -18,6 +18,9 @@ package com.exactpro.th2.kafka.client
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration
+import kotlin.time.DurationUnit
+import kotlin.time.toDuration
 
 class Config (
     /**
@@ -26,8 +29,7 @@ class Config (
     @JsonProperty(required = true)
     val topicToAlias: Map<String, String>,
 
-    @JsonProperty(required = true)
-    val sessionGroup: String,
+    val sessionGroup: String? = null,
 
     /**
      * URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster
@@ -79,22 +81,24 @@ class Config (
      */
     val reconnectBackoffMaxMs: Int = 1000
 ) {
-    val aliasToTopic: MutableMap<String, String> = HashMap(topicToAlias.size)
-    val maxInactivityPeriodMillis = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod)
+    val aliasToTopic: Map<String, String>
+    val maxInactivityPeriod: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)
 
     init {
         require(topicToAlias.isNotEmpty()) { "No topics was provided. Please, check the configuration" }
 
+        val aliasToTopicMutable = HashMap<String, String>(topicToAlias.size)
         topicToAlias.forEach { (topic: String, alias: String) ->
             require(alias.isNotEmpty()) { "Session alias can't be empty. Please, check the configuration for $topic" }
-            require(alias !in aliasToTopic) { "Session alias '$alias' duplicated" }
-            aliasToTopic += alias to topic
+            require(alias !in aliasToTopicMutable) { "Session alias '$alias' duplicated" }
+            aliasToTopicMutable += alias to topic
         }
+        aliasToTopic = aliasToTopicMutable
 
-        require(reconnectBackoffMaxMs > 0) { "ReconnectBackoffMaxMs must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
-        require(reconnectBackoffMs > 0) { "ReconnectBackoffMs must be positive. Please, check the configuration. $reconnectBackoffMs" }
-        require(batchSize > 0) { "Batch size must be positive. Please, check the configuration. $batchSize" }
-        require(maxInactivityPeriod > 0) { "maxInactivityPeriod must be positive. Please, check the configuration. $maxInactivityPeriod" }
-        require(timeSpan > 0) { "Time span must be positive. Please, check the configuration. $timeSpan" }
+        require(reconnectBackoffMaxMs > 0) { "'reconnectBackoffMaxMs' must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
+        require(reconnectBackoffMs > 0) { "'reconnectBackoffMs' must be positive. Please, check the configuration. $reconnectBackoffMs" }
+        require(batchSize > 0) { "'batchSize' must be positive. Please, check the configuration. $batchSize" }
+        require(maxInactivityPeriod > 0) { "'maxInactivityPeriod' must be positive. Please, check the configuration. $maxInactivityPeriod" }
+        require(timeSpan > 0) { "'timeSpan' must be positive. Please, check the configuration. $timeSpan" }
     }
 }
