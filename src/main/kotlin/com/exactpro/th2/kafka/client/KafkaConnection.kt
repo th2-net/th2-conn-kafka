@@ -40,6 +40,7 @@ import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.kafka.common.serialization.StringSerializer
 import java.time.Duration
 import java.time.Instant
+import java.util.HashSet
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -119,67 +120,68 @@ class KafkaConnection(
         }
     }
 
-    override fun run() {
-        try {
-            consumer.subscribe(config.topicToAlias.keys)
-            while (!Thread.currentThread().isInterrupted) {
-                val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
+    override fun run() = try {
+        val startTimestamp = Instant.now().toEpochMilli()
+        consumer.subscribe(config.topicToAlias.keys)
 
-                if (!records.isEmpty) {
-                    val inactivityPeriod = System.currentTimeMillis() - records.first().timestamp()
-                    if (inactivityPeriod > config.maxInactivityPeriod.inWholeMilliseconds) {
-                        consumer.seekToEnd(getAllPartitions())
-                        val msgText = "Inactivity period exceeded ($inactivityPeriod ms). Skipping unread messages."
-                        LOGGER.info { msgText }
-                        eventSender.onEvent(msgText, "ConnectivityServiceEvent")
-                    } else {
-                        for (record in records) {
-                            val messageID = factory.newMessageIDBuilder()
-                                .setConnectionId(
-                                    ConnectionID.newBuilder()
-                                        .setSessionAlias(config.topicToAlias[record.topic()])
-                                        .apply { config.sessionGroup?.let { sessionGroup = it } }
-                                )
-                                .setDirection(Direction.FIRST)
-                                .setSequence(firstSequence())
-                                .setTimestamp(Instant.now().toTimestamp())
-                                .build()
-                            messageProcessor.process(
-                                RawMessage.newBuilder()
-                                    .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
-                                    .setBody(UnsafeByteOperations.unsafeWrap(record.value()))
-                                    .build()
-                            )
-                        }
-                    }
+        while (!Thread.currentThread().isInterrupted) {
+            val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
 
-                    consumer.commitAsync { offsets: Map<TopicPartition, OffsetAndMetadata>, exception: Exception? ->
-                        if (exception == null) {
-                            LOGGER.trace { "Commit succeed for offsets $offsets" }
-                        } else {
-                            LOGGER.error(exception) { "Commit failed for offsets $offsets" }
-                        }
-                    }
+            if (records.isEmpty) continue
+
+            val topicsToSkip: MutableSet<String> = HashSet()
+
+            for (record in records) {
+                val inactivityPeriod = startTimestamp - record.timestamp()
+                if (inactivityPeriod > config.maxInactivityPeriod.inWholeMilliseconds) {
+                    val topicToSkip = record.topic()
+                    topicsToSkip.add(topicToSkip)
+                    consumer.seekToEnd(
+                        consumer.partitionsFor(topicToSkip).map { TopicPartition(topicToSkip, it.partition()) }
+                    )
+                    val msgText =
+                        "Inactivity period exceeded ($inactivityPeriod ms). Skipping unread messages in '$topicToSkip' topic."
+                    LOGGER.info { msgText }
+                    eventSender.onEvent(msgText, "ConnectivityServiceEvent")
                 }
             }
-        } catch (e: Exception) {
-            val errorMessage = "Failed to read messages from Kafka"
-            LOGGER.error(errorMessage, e)
-            eventSender.onEvent(errorMessage, "Error", exception =  e)
-        } finally {
-            consumer.wakeup()
-            consumer.close()
-        }
-    }
 
-    private fun getAllPartitions(): List<TopicPartition> {
-        val partitions: MutableList<TopicPartition> = ArrayList()
-        for (topic in config.topicToAlias.keys) {
-            for (partInfo in consumer.partitionsFor(topic)) {
-                partitions += TopicPartition(topic, partInfo.partition())
+            for (record in records) {
+                if (record.topic() in topicsToSkip) continue
+
+                val messageID = factory.newMessageIDBuilder()
+                    .setConnectionId(
+                        ConnectionID.newBuilder()
+                            .setSessionAlias(config.topicToAlias[record.topic()])
+                            .apply { config.sessionGroup?.let { sessionGroup = it } }
+                    )
+                    .setDirection(Direction.FIRST)
+                    .setSequence(firstSequence())
+                    .setTimestamp(Instant.now().toTimestamp())
+                    .build()
+                messageProcessor.process(
+                    RawMessage.newBuilder()
+                        .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
+                        .setBody(UnsafeByteOperations.unsafeWrap(record.value()))
+                        .build()
+                )
+            }
+
+            consumer.commitAsync { offsets: Map<TopicPartition, OffsetAndMetadata>, exception: Exception? ->
+                if (exception == null) {
+                    LOGGER.trace { "Commit succeed for offsets $offsets" }
+                } else {
+                    LOGGER.error(exception) { "Commit failed for offsets $offsets" }
+                }
             }
         }
-        return partitions
+    } catch (e: Exception) {
+        val errorMessage = "Failed to read messages from Kafka"
+        LOGGER.error(errorMessage, e)
+        eventSender.onEvent(errorMessage, "Error", exception = e)
+    } finally {
+        consumer.wakeup()
+        consumer.close()
     }
 
     companion object {
