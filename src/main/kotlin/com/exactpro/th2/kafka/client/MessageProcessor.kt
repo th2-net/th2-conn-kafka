@@ -16,10 +16,12 @@
 
 package com.exactpro.th2.kafka.client
 
+import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sequence
+import com.exactpro.th2.common.message.toTimestamp
 import com.google.common.util.concurrent.ThreadFactoryBuilder
 import io.reactivex.rxjava3.core.Flowable
 import io.reactivex.rxjava3.flowables.GroupedFlowable
@@ -29,19 +31,22 @@ import io.reactivex.rxjava3.processors.UnicastProcessor
 import io.reactivex.rxjava3.subscribers.DisposableSubscriber
 import mu.KotlinLogging
 import java.io.Closeable
+import java.time.Instant
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import java.util.function.Supplier
 
 class MessageProcessor(
     rawSubscriberFactory: Supplier<MessageRouterSubscriber<RawMessageBatch>>,
     config: Config
 ) : Closeable {
-    private val processor: FlowableProcessor<RawMessage> = UnicastProcessor.create()
+    private val processor: FlowableProcessor<RawMessage.Builder> = UnicastProcessor.create()
 
     init {
         createPipeline().subscribe(TerminationSubscriber(rawSubscriberFactory, config))
     }
 
-    fun process(message: RawMessage) = processor.onNext(message)
+    fun process(message: RawMessage.Builder) = processor.onNext(message)
 
     override fun close() {
         LOGGER.info { "Shutdown pipeline scheduler" }
@@ -50,20 +55,20 @@ class MessageProcessor(
         processor.onComplete()
     }
 
-    private fun createPipeline(): Flowable<GroupedFlowable<String, RawMessage>> =
+    private fun createPipeline(): Flowable<GroupedFlowable<String, RawMessage.Builder>> =
         processor.observeOn(MESSAGE_PROCESSOR_SCHEDULER).groupBy { it.metadata.id.connectionId.sessionGroup }
 
     private class TerminationSubscriber(
         private val rawSubscriberFactory: Supplier<MessageRouterSubscriber<RawMessageBatch>>,
         private val settings: Config
-    ) : DisposableSubscriber<Flowable<RawMessage>>() {
+    ) : DisposableSubscriber<Flowable<RawMessage.Builder>>() {
 
         override fun onStart() {
             super.onStart()
             LOGGER.info { "Subscribed to pipeline" }
         }
 
-        override fun onNext(flowable: Flowable<RawMessage>) {
+        override fun onNext(flowable: Flowable<RawMessage.Builder>) {
             val messageConnectable = flowable.publish()
             createPackAndPublishPipeline(messageConnectable, rawSubscriberFactory, settings)
             messageConnectable.connect()
@@ -73,14 +78,27 @@ class MessageProcessor(
         override fun onComplete() = LOGGER.info { "Upstream is completed" }
 
         private fun createPackAndPublishPipeline(
-            messageConnectable: Flowable<RawMessage>,
+            messageConnectable: Flowable<RawMessage.Builder>,
             rawSubscriberFactory: Supplier<MessageRouterSubscriber<RawMessageBatch>>,
             settings: Config
         ) {
             messageConnectable
-                .doOnNext { LOGGER.trace { "Message before window with sequence ${it.sequence} and direction ${it.direction}" } }
-                .window(settings.timeSpan, settings.timeSpanUnit, MESSAGE_PROCESSOR_SCHEDULER, settings.batchSize)
-                .concatMapSingle { it.toList() }
+                .observeOn(MESSAGE_PROCESSOR_SCHEDULER)
+                .window(settings.timeSpan, settings.timeSpanUnit, settings.batchSize)
+                .concatMapSingle {
+                    it.map { rawMessageBuilder ->
+                        rawMessageBuilder.metadataBuilder.idBuilder.apply {
+                            timestamp = Instant.now().toTimestamp()
+                            sequence = when (rawMessageBuilder.direction) {
+                                Direction.FIRST -> firstSequence()
+                                Direction.SECOND -> secondSequence()
+                                else -> error("Unrecognized direction")
+                            }
+                        }
+                        rawMessageBuilder.build()
+                    }
+                        .doOnNext { LOGGER.trace { "Message built with sequence ${it.sequence} and direction ${it.direction}" } }
+                        .toList() }
                 .filter { it.isNotEmpty() }
                 .map { RawMessageBatch.newBuilder().addAllMessages(it).build() }
                 .publish()
@@ -89,6 +107,15 @@ class MessageProcessor(
                     connect()
                 }
             LOGGER.info { "Connected to publish batches group" }
+        }
+
+        companion object {
+            private fun createSequence(): () -> Long = Instant.now().run {
+                AtomicLong(epochSecond * TimeUnit.SECONDS.toNanos(1) + nano)
+            }::incrementAndGet
+
+            private val firstSequence: () -> Long = createSequence()
+            private val secondSequence: () -> Long = createSequence()
         }
     }
 

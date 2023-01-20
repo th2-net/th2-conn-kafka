@@ -16,18 +16,19 @@
 
 package com.exactpro.th2.kafka.client
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
-class Config (
+class Config(
     /**
-     * Match topic with sessionAlias
+     * Match sessionAlias with topic and key
      */
     @JsonProperty(required = true)
-    val topicToAlias: Map<String, String>,
+    val aliasToKafkaStream: Map<String, KafkaStream>,
 
     val sessionGroup: String? = null,
 
@@ -81,20 +82,15 @@ class Config (
      */
     val reconnectBackoffMaxMs: Int = 1000
 ) {
-    val aliasToTopic: Map<String, String>
+    @JsonIgnore
     val maxInactivityPeriod: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)
 
+    @JsonIgnore
+    val kafkaStreamToAlias: Map<KafkaStream, String> = aliasToKafkaStream.map { it.value to it.key }.toMap()
+
     init {
-        require(topicToAlias.isNotEmpty()) { "No topics was provided. Please, check the configuration" }
-
-        val aliasToTopicMutable = HashMap<String, String>(topicToAlias.size)
-        topicToAlias.forEach { (topic: String, alias: String) ->
-            require(alias.isNotEmpty()) { "Session alias can't be empty. Please, check the configuration for $topic" }
-            require(alias !in aliasToTopicMutable) { "Session alias '$alias' duplicated" }
-            aliasToTopicMutable += alias to topic
-        }
-        aliasToTopic = aliasToTopicMutable
-
+        require(aliasToKafkaStream.isNotEmpty()) { "'aliasToKafkaStream' can't be empty" }
+        require(kafkaStreamToAlias.size == aliasToKafkaStream.size) { "Duplicated data stream in 'aliasToKafkaStream'" }
         require(reconnectBackoffMaxMs > 0) { "'reconnectBackoffMaxMs' must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
         require(reconnectBackoffMs > 0) { "'reconnectBackoffMs' must be positive. Please, check the configuration. $reconnectBackoffMs" }
         require(batchSize > 0) { "'batchSize' must be positive. Please, check the configuration. $batchSize" }
@@ -102,3 +98,5 @@ class Config (
         require(timeSpan > 0) { "'timeSpan' must be positive. Please, check the configuration. $timeSpan" }
     }
 }
+
+data class KafkaStream(val topic: String, val key: String?)

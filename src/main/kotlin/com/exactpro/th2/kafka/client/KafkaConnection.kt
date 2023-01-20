@@ -20,7 +20,6 @@ import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
-import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.google.protobuf.UnsafeByteOperations
 import mu.KotlinLogging
@@ -42,8 +41,6 @@ import java.time.Duration
 import java.time.Instant
 import java.util.HashSet
 import java.util.Properties
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicLong
 
 class KafkaConnection(
     private val config: Config,
@@ -77,33 +74,22 @@ class KafkaConnection(
         }
     )
 
-    private fun createSequence(): () -> Long = Instant.now().run {
-        AtomicLong(epochSecond * TimeUnit.SECONDS.toNanos(1) + nano)
-    }::incrementAndGet
-
-    private val firstSequence: () -> Long = createSequence()
-    private val secondSequence: () -> Long = createSequence()
-
     fun publish(message: RawMessage) {
         val alias = message.metadata.id.connectionId.sessionAlias
-        val topic = config.aliasToTopic[alias] ?: error("Session alias '$alias' not found.")
+        val kafkaStream = config.aliasToKafkaStream[alias] ?: error("Session alias '$alias' not found.")
         val value = message.body.toByteArray()
 
-        val messageID = message.metadata.id.toBuilder()
+        val messageIdBuilder = message.metadata.id.toBuilder()
             .setBookName(factory.boxConfiguration.bookName)
             .setDirection(Direction.SECOND)
-            .setSequence(secondSequence())
-            .setTimestamp(Instant.now().toTimestamp())
-            .build()
 
         messageProcessor.process(
             RawMessage.newBuilder()
-                .setMetadata(message.metadata.toBuilder().setId(messageID))
+                .setMetadata(message.metadata.toBuilder().setId(messageIdBuilder))
                 .setBody(message.body)
-                .build()
         )
 
-        val kafkaRecord = ProducerRecord<String, ByteArray>(topic, value)
+        val kafkaRecord = ProducerRecord<String, ByteArray>(kafkaStream.topic, kafkaStream.key, value)
         producer.send(kafkaRecord) { _, exception: Throwable? ->
             when (exception) {
                 null -> {
@@ -122,7 +108,7 @@ class KafkaConnection(
 
     override fun run() = try {
         val startTimestamp = Instant.now().toEpochMilli()
-        consumer.subscribe(config.topicToAlias.keys)
+        consumer.subscribe(config.kafkaStreamToAlias.map { it.key.topic })
 
         while (!Thread.currentThread().isInterrupted) {
             val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
@@ -148,22 +134,19 @@ class KafkaConnection(
 
             for (record in records) {
                 if (record.topic() in topicsToSkip) continue
+                val alias = config.kafkaStreamToAlias[KafkaStream(record.topic(), record.key())] ?: continue
 
                 val messageID = factory.newMessageIDBuilder()
                     .setConnectionId(
                         ConnectionID.newBuilder()
-                            .setSessionAlias(config.topicToAlias[record.topic()])
+                            .setSessionAlias(alias)
                             .apply { config.sessionGroup?.let { sessionGroup = it } }
                     )
                     .setDirection(Direction.FIRST)
-                    .setSequence(firstSequence())
-                    .setTimestamp(Instant.now().toTimestamp())
-                    .build()
                 messageProcessor.process(
                     RawMessage.newBuilder()
                         .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
                         .setBody(UnsafeByteOperations.unsafeWrap(record.value()))
-                        .build()
                 )
             }
 
