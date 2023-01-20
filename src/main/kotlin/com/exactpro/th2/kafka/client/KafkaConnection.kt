@@ -23,6 +23,9 @@ import com.exactpro.th2.common.grpc.RawMessageMetadata
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.google.protobuf.UnsafeByteOperations
 import mu.KotlinLogging
+import org.apache.kafka.clients.admin.AdminClient
+import org.apache.kafka.clients.admin.AdminClientConfig
+import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.clients.consumer.Consumer
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.consumer.ConsumerRecords
@@ -37,17 +40,20 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.kafka.common.serialization.StringSerializer
+import java.io.Closeable
 import java.time.Duration
 import java.time.Instant
 import java.util.HashSet
 import java.util.Properties
+import java.util.Collections
 
 class KafkaConnection(
     private val config: Config,
     private val factory: CommonFactory,
     private val messageProcessor: MessageProcessor,
     private val eventSender: EventSender
-) : Runnable {
+) : Runnable, Closeable {
+
     private val consumer: Consumer<String, ByteArray> = KafkaConsumer(
         Properties().apply {
             putAll(mapOf(
@@ -167,8 +173,50 @@ class KafkaConnection(
         consumer.close()
     }
 
+    override fun close() {
+        producer.close()
+    }
+
     companion object {
         private val LOGGER = KotlinLogging.logger {}
         private val POLL_TIMEOUT = Duration.ofMillis(100L)
+
+        fun createTopics(config: Config) {
+            if (config.topicsToCreate.isEmpty()) return
+
+            AdminClient.create(
+                mapOf(
+                    AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG to config.bootstrapServers,
+                    AdminClientConfig.RECONNECT_BACKOFF_MS_CONFIG to config.reconnectBackoffMs,
+                    AdminClientConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG to config.reconnectBackoffMaxMs,
+                )
+            ).use { adminClient ->
+
+                val currentTopicList = adminClient.listTopics().names().get()
+
+                config.kafkaStreamToAlias.asSequence()
+                    .map { it.key.topic }
+                    .distinct()
+                    .filter { it !in currentTopicList }
+                    .forEach { topic ->
+                        if (topic in currentTopicList) {
+                            LOGGER.info { "Topic '$topic' already exists" }
+                        } else {
+                            runCatching {
+                                val result = adminClient.createTopics(
+                                    Collections.singleton(
+                                        NewTopic(topic, config.newTopicsPartitions, config.newTopicsReplicationFactor)
+                                    )
+                                )
+                                result.all().get()
+                            }.onSuccess {
+                                LOGGER.info { "Topic '$topic' created" }
+                            }.onFailure { ex ->
+                                throw RuntimeException("Failed to create topic '$topic'", ex)
+                            }
+                        }
+                    }
+            }
+        }
     }
 }

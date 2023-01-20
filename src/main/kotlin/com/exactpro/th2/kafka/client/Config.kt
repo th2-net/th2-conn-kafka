@@ -80,7 +80,12 @@ class Config(
      * this fixed rate. To avoid connection storms, a randomization factor of 0.2 will be applied to
      * the backoff resulting in a random range between 20% below and 20% above the computed value
      */
-    val reconnectBackoffMaxMs: Int = 1000
+    val reconnectBackoffMaxMs: Int = 1000,
+
+    val createTopics: Boolean = false,
+    val topicsToCreate: List<String> = emptyList(),
+    val newTopicsPartitions: Int = 1,
+    val newTopicsReplicationFactor: Short = 1,
 ) {
     @JsonIgnore
     val maxInactivityPeriod: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)

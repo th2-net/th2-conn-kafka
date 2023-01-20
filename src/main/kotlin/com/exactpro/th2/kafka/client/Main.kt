@@ -63,7 +63,11 @@ fun main(args: Array<String>) {
             .apply { resources += "processor" to ::close }
 
         val eventSender = EventSender(factory.eventBatchRouter, factory.rootEventId)
+
+        if (config.createTopics) KafkaConnection.createTopics(config)
         val connection = KafkaConnection(config, factory, messageProcessor, eventSender)
+            .apply { resources += "kafka connection" to ::close }
+
         Executors.newSingleThreadExecutor().apply {
             resources += "executor service" to { this.shutdownNow() }
             execute(connection)
