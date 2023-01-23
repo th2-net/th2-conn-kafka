@@ -25,10 +25,14 @@ import kotlin.time.toDuration
 
 class Config(
     /**
+     * Match sessionAlias with topic
+     */
+    val aliasToTopic: Map<String, String> = emptyMap(),
+
+    /**
      * Match sessionAlias with topic and key
      */
-    @JsonProperty(required = true)
-    val aliasToKafkaStream: Map<String, KafkaStream>,
+    val aliasToTopicAndKey: Map<String, KafkaStream> = emptyMap(),
 
     val sessionGroup: String? = null,
 
@@ -55,7 +59,7 @@ class Config(
     /**
      * The size of one batch
      */
-    val batchSize: Long = 100L,
+    val batchSize: Int = 100,
 
     /**
      * The period router collects messages before it should be sent
@@ -85,17 +89,36 @@ class Config(
     val createTopics: Boolean = false,
     val topicsToCreate: List<String> = emptyList(),
     val newTopicsPartitions: Int = 1,
-    val newTopicsReplicationFactor: Short = 1,
+    val newTopicsReplicationFactor: Short = 1
 ) {
     @JsonIgnore
     val maxInactivityPeriod: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)
-
     @JsonIgnore
-    val kafkaStreamToAlias: Map<KafkaStream, String> = aliasToKafkaStream.map { it.value to it.key }.toMap()
+    val topicToAlias: Map<String, String> = aliasToTopic.map {
+        require(it.value.isNotEmpty()) { "Topic can't be empty string in 'topicToAlias'" }
+        require(it.key.isNotEmpty()) { "Alias can't be empty string in 'topicToAlias'" }
+        it.value to it.key
+    }.toMap()
+    @JsonIgnore
+    val topicAndKeyToAlias: Map<KafkaStream, String> = aliasToTopicAndKey.map {
+        require(it.value.topic.isNotEmpty()) { "Topic can't be empty string in 'topicAndKeyToAlias'" }
+        require(it.value.key?.isNotEmpty() ?: true) { "Key can't be empty string in 'topicAndKeyToAlias'" }
+        require(it.key.isNotEmpty()) { "Alias  can't be empty string in 'topicAndKeyToAlias'" }
+        it.value to it.key
+    }.toMap()
 
     init {
-        require(aliasToKafkaStream.isNotEmpty()) { "'aliasToKafkaStream' can't be empty" }
-        require(kafkaStreamToAlias.size == aliasToKafkaStream.size) { "Duplicated data stream in 'aliasToKafkaStream'" }
+        require(aliasToTopicAndKey.isNotEmpty() || aliasToTopic.isNotEmpty()) { "'aliasToKafkaStream' and 'aliasToTopic' can't both be empty" }
+
+        val sameAliases = aliasToTopicAndKey.keys.intersect(aliasToTopic.keys)
+        require(sameAliases.isEmpty()) { "'aliasToKafkaStream' and 'aliasToTopic' can't contain the same aliases: $sameAliases" }
+
+        val sameTopics = aliasToTopicAndKey.map { it.value.topic }.intersect(aliasToTopic.values.toSet())
+        require(sameTopics.isEmpty()) { "'aliasToKafkaStream' and 'aliasToTopic' can't contain the same topics: $sameAliases" }
+
+        require(topicToAlias.size == aliasToTopic.size) { "Duplicated topic in 'aliasToTopic'" }
+        require(topicAndKeyToAlias.size == aliasToTopicAndKey.size) { "Duplicated data stream in 'aliasToKafkaStream'" }
+
         require(reconnectBackoffMaxMs > 0) { "'reconnectBackoffMaxMs' must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
         require(reconnectBackoffMs > 0) { "'reconnectBackoffMs' must be positive. Please, check the configuration. $reconnectBackoffMs" }
         require(batchSize > 0) { "'batchSize' must be positive. Please, check the configuration. $batchSize" }
@@ -104,4 +127,7 @@ class Config(
     }
 }
 
-data class KafkaStream(val topic: String, val key: String?)
+data class KafkaStream(
+    @JsonProperty(required = true) val topic: String,
+    @JsonProperty(required = true) val key: String?
+)

@@ -50,7 +50,7 @@ import java.util.Collections
 class KafkaConnection(
     private val config: Config,
     private val factory: CommonFactory,
-    private val messageProcessor: MessageProcessor,
+    private val messageProcessor: RawMessageProcessor,
     private val eventSender: EventSender
 ) : Runnable, Closeable {
 
@@ -82,14 +82,14 @@ class KafkaConnection(
 
     fun publish(message: RawMessage) {
         val alias = message.metadata.id.connectionId.sessionAlias
-        val kafkaStream = config.aliasToKafkaStream[alias] ?: error("Session alias '$alias' not found.")
+        val kafkaStream = config.aliasToTopicAndKey[alias] ?: KafkaStream(config.aliasToTopic[alias] ?: error("Session alias '$alias' not found."), null)
         val value = message.body.toByteArray()
 
         val messageIdBuilder = message.metadata.id.toBuilder()
             .setBookName(factory.boxConfiguration.bookName)
             .setDirection(Direction.SECOND)
 
-        messageProcessor.process(
+        messageProcessor.onMessage(
             RawMessage.newBuilder()
                 .setMetadata(message.metadata.toBuilder().setId(messageIdBuilder))
                 .setBody(message.body)
@@ -114,7 +114,7 @@ class KafkaConnection(
 
     override fun run() = try {
         val startTimestamp = Instant.now().toEpochMilli()
-        consumer.subscribe(config.kafkaStreamToAlias.map { it.key.topic })
+        consumer.subscribe(config.topicToAlias.keys + config.topicAndKeyToAlias.map { it.key.topic })
 
         while (!Thread.currentThread().isInterrupted) {
             val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
@@ -140,7 +140,8 @@ class KafkaConnection(
 
             for (record in records) {
                 if (record.topic() in topicsToSkip) continue
-                val alias = config.kafkaStreamToAlias[KafkaStream(record.topic(), record.key())] ?: continue
+
+                val alias = config.topicToAlias[record.topic()] ?: config.topicAndKeyToAlias[KafkaStream(record.topic(), record.key())] ?: continue
 
                 val messageID = factory.newMessageIDBuilder()
                     .setConnectionId(
@@ -149,7 +150,7 @@ class KafkaConnection(
                             .apply { config.sessionGroup?.let { sessionGroup = it } }
                     )
                     .setDirection(Direction.FIRST)
-                messageProcessor.process(
+                messageProcessor.onMessage(
                     RawMessage.newBuilder()
                         .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
                         .setBody(UnsafeByteOperations.unsafeWrap(record.value()))
@@ -191,31 +192,25 @@ class KafkaConnection(
                     AdminClientConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG to config.reconnectBackoffMaxMs,
                 )
             ).use { adminClient ->
-
                 val currentTopicList = adminClient.listTopics().names().get()
-
-                config.kafkaStreamToAlias.asSequence()
-                    .map { it.key.topic }
-                    .distinct()
-                    .filter { it !in currentTopicList }
-                    .forEach { topic ->
-                        if (topic in currentTopicList) {
-                            LOGGER.info { "Topic '$topic' already exists" }
-                        } else {
-                            runCatching {
-                                val result = adminClient.createTopics(
-                                    Collections.singleton(
-                                        NewTopic(topic, config.newTopicsPartitions, config.newTopicsReplicationFactor)
-                                    )
+                config.topicsToCreate.forEach { topic ->
+                    if (topic in currentTopicList) {
+                        LOGGER.info { "Topic '$topic' already exists" }
+                    } else {
+                        runCatching {
+                            val result = adminClient.createTopics(
+                                Collections.singleton(
+                                    NewTopic(topic, config.newTopicsPartitions, config.newTopicsReplicationFactor)
                                 )
-                                result.all().get()
-                            }.onSuccess {
-                                LOGGER.info { "Topic '$topic' created" }
-                            }.onFailure { ex ->
-                                throw RuntimeException("Failed to create topic '$topic'", ex)
-                            }
+                            )
+                            result.all().get()
+                        }.onSuccess {
+                            LOGGER.info { "Topic '$topic' created" }
+                        }.onFailure { ex ->
+                            throw RuntimeException("Failed to create topic '$topic'", ex)
                         }
                     }
+                }
             }
         }
     }

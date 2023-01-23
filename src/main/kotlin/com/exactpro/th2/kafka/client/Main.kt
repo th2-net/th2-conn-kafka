@@ -23,15 +23,21 @@ import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
+import com.exactpro.th2.common.grpc.Direction
+import com.exactpro.th2.common.message.direction
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.kafka.client.utility.storeEvent
 import mu.KotlinLogging
+import java.time.Instant
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -59,8 +65,21 @@ fun main(args: Array<String>) {
     runCatching {
         val config: Config = factory.getCustomConfiguration(Config::class.java)
         val messageRouterRawBatch = factory.messageRouterRawBatch
-        val messageProcessor = MessageProcessor({ MessageRouterSubscriber(messageRouterRawBatch) }, config)
-            .apply { resources += "processor" to ::close }
+
+        val firstSequence: () -> Long = createSequence()
+        val secondSequence: () -> Long = createSequence()
+        val sequenceProducer: (RawMessage.Builder) -> Long = {
+            when (it.direction) {
+                Direction.FIRST -> firstSequence()
+                Direction.SECOND -> secondSequence()
+                else -> error("Unrecognized direction")
+            }
+        }
+
+        val messageProcessor = RawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit, sequenceProducer) {
+            it.runCatching(messageRouterRawBatch::send)
+                .onFailure { e -> LOGGER.error(e) { "Could not send message to mq: ${it.toJson()}" } }
+        }.apply { resources += "message processor" to ::close }
 
         val eventSender = EventSender(factory.eventBatchRouter, factory.rootEventId)
 
@@ -101,6 +120,10 @@ fun main(args: Array<String>) {
     LOGGER.info { "Microservice shutted down." }
 }
 
+private fun createSequence(): () -> Long = Instant.now().run {
+    AtomicLong(epochSecond * TimeUnit.SECONDS.toNanos(1) + nano) // TODO: we don't need atomicity here
+}::incrementAndGet
+
 class EventSender(private val eventRouter: MessageRouter<EventBatch>, private val rootEventId: EventID) {
     fun onEvent(name: String, type: String, message: RawMessage? = null, exception: Throwable? = null) {
         val event = Event
@@ -114,8 +137,7 @@ class EventSender(private val eventRouter: MessageRouter<EventBatch>, private va
         }
 
         if (exception != null) {
-            event.exception(exception, true)
-                .status(Event.Status.FAILED)
+            event.exception(exception, true).status(Event.Status.FAILED)
         }
 
         eventRouter.storeEvent(event, message?.parentEventId ?: rootEventId)

@@ -48,11 +48,10 @@ dependencies {
 
     implementation 'com.exactpro.th2:common:5.0.0-dev-version-5-3838510969-SNAPSHOT'
 
-    implementation 'io.reactivex.rxjava3:rxkotlin:3.0.1'
     implementation 'org.apache.kafka:kafka_2.13:3.3.1'
     implementation 'io.github.microutils:kotlin-logging:3.0.0'
 
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.7.2'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
 }
 
 test {
@@ -62,11 +61,11 @@ test {
 applicationName = 'service'
 
 application {
-    mainClass.set('com.exactpro.th2.kafka.client.Main')
+    mainClass = 'com.exactpro.th2.kafka.client.Main'
 }
 
 distTar {
-    archiveName "${applicationName}.tar"
+    archiveFileName = "${applicationName}.tar"
 }
 
 dockerPrepare {
@@ -78,5 +77,5 @@ docker {
 }
 
 tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions.jvmTarget = "11"
+    kotlinOptions.jvmTarget = 11
 }
