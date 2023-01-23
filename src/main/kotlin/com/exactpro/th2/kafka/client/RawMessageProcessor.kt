@@ -9,8 +9,11 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.BlockingQueue
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
 import kotlin.concurrent.withLock
@@ -24,23 +27,13 @@ class RawMessageProcessor(
 ) : AutoCloseable {
     private val messageQueue: BlockingQueue<RawMessage.Builder> = LinkedBlockingQueue()
     private val batchQueue: BlockingQueue<RawMessageBatch> = LinkedBlockingQueue()
+    private val batchFlusherExecutor = Executors.newSingleThreadScheduledExecutor()
 
     private val messageReceiverThread = thread(name = "message-receiver") {
-        val batchFlusherExecutor = Executors.newSingleThreadScheduledExecutor()
-        val batchBuilder = RawMessageBatch.newBuilder()
-        var flusherFuture: Future<*> = CompletableFuture.completedFuture(null)
-        val lock = ReentrantLock()
-
-        fun enqueueBatch() = lock.withLock {
-            if (batchBuilder.messagesCount > 0) {
-                flusherFuture.cancel(false)
-                batchQueue.add(batchBuilder.build())
-                batchBuilder.clear()
-            }
-        }
+        val builders: ConcurrentMap<String, BatchHolder> = ConcurrentHashMap()
 
         while (true) {
-            val messageBuilder = messageQueue.take()
+            val messageBuilder: RawMessage.Builder = messageQueue.take()
             if (messageBuilder === TERMINAL_MESSAGE) break
 
             messageBuilder.metadataBuilder.idBuilder.apply {
@@ -48,6 +41,24 @@ class RawMessageProcessor(
                 sequence = sequenceProducer(messageBuilder)
             }
 
+            val sessionGroup: String = messageBuilder.metadata.id.connectionId.sessionGroup
+            builders.getOrPut(sessionGroup, ::BatchHolder).addMessage(messageBuilder)
+        }
+
+        builders.values.forEach(BatchHolder::enqueueBatch)
+        batchFlusherExecutor.shutdown()
+        if (!batchFlusherExecutor.awaitTermination(TERMINATION_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            LOGGER.warn { "batchFlusherExecutor did not terminate" }
+        }
+        batchQueue.add(TERMINAL_BATCH)
+    }
+
+    inner class BatchHolder {
+        private val batchBuilder: RawMessageBatch.Builder = RawMessageBatch.newBuilder()
+        private var flusherFuture: Future<*> = CompletableFuture.completedFuture(null)
+        private val lock: Lock = ReentrantLock()
+
+        fun addMessage(messageBuilder: RawMessage.Builder) {
             lock.withLock {
                 batchBuilder.addMessages(messageBuilder.build())
                 when (batchBuilder.messagesCount) {
@@ -57,12 +68,13 @@ class RawMessageProcessor(
             }
         }
 
-        enqueueBatch()
-        batchFlusherExecutor.shutdown()
-        if (!batchFlusherExecutor.awaitTermination(TERMINATION_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-            LOGGER.warn { "batchFlusherExecutor did not terminate" }
+        fun enqueueBatch() = lock.withLock {
+            if (batchBuilder.messagesCount > 0) {
+                flusherFuture.cancel(false)
+                batchQueue.add(batchBuilder.build())
+                batchBuilder.clear()
+            }
         }
-        batchQueue.add(TERMINAL_BATCH)
     }
 
     private val batchSenderThread = thread(name = "batch-sender") {
