@@ -25,6 +25,7 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.message.direction
+import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
@@ -42,7 +43,7 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 private val LOGGER = KotlinLogging.logger {}
-private val INPUT_QUEUE_ATTRIBUTE = "send"
+private const val INPUT_QUEUE_ATTRIBUTE = "send"
 
 fun main(args: Array<String>) {
     val resources: Deque<Pair<String, () -> Unit>> = ConcurrentLinkedDeque()
@@ -77,8 +78,9 @@ fun main(args: Array<String>) {
         }
 
         val messageProcessor = RawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit, sequenceProducer) {
+            LOGGER.trace { "Sending batch with ${it.messagesCount} messages to MQ." }
             it.runCatching(messageRouterRawBatch::send)
-                .onFailure { e -> LOGGER.error(e) { "Could not send message to mq: ${it.toJson()}" } }
+                .onFailure { e -> LOGGER.error(e) { "Could not send message batch to MQ: ${it.toJson()}" } }
         }.apply { resources += "message processor" to ::close }
 
         val eventSender = EventSender(factory.eventBatchRouter, factory.rootEventId)
@@ -93,11 +95,23 @@ fun main(args: Array<String>) {
         }
 
         val mqListener: (DeliveryMetadata, RawMessageBatch) -> Unit = { metadata, batch ->
+            LOGGER.trace { "Batch with ${batch.messagesCount} messages received from MQ"}
             for (message in batch.messagesList) {
+                LOGGER.trace { "Message ${message.logId} extracted from batch." }
+
+                if (message.metadata.id.bookName != factory.boxConfiguration.bookName) {
+                    val errorText = "Expected bookName: '${factory.boxConfiguration.bookName}', actual '${message.metadata.id.bookName}' in message ${message.logId}"
+                    LOGGER.error { errorText }
+                    eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED)
+                    continue
+                }
+
                 runCatching {
                     connection.publish(message)
                 }.onFailure {
-                    LOGGER.error(it) { "Could not publish message. Consumer tag ${metadata.consumerTag}" }
+                    val errorText = "Could not publish message ${message.logId}. Consumer tag ${metadata.consumerTag}"
+                    LOGGER.error(it) { errorText }
+                    eventSender.onEvent(errorText, "SendError", message, it)
                 }
             }
         }
@@ -120,12 +134,19 @@ fun main(args: Array<String>) {
     LOGGER.info { "Microservice shutted down." }
 }
 
-private fun createSequence(): () -> Long = Instant.now().run {
-    AtomicLong(epochSecond * TimeUnit.SECONDS.toNanos(1) + nano) // TODO: we don't need atomicity here
-}::incrementAndGet
+private val Instant.epochNanos
+    get() = TimeUnit.SECONDS.toNanos(epochSecond) + nano
+
+fun createSequence(): () -> Long = AtomicLong(Instant.now().epochNanos)::incrementAndGet // TODO: we don't need atomicity here
 
 class EventSender(private val eventRouter: MessageRouter<EventBatch>, private val rootEventId: EventID) {
-    fun onEvent(name: String, type: String, message: RawMessage? = null, exception: Throwable? = null) {
+    fun onEvent(
+        name: String,
+        type: String,
+        message: RawMessage? = null,
+        exception: Throwable? = null,
+        status: Event.Status? = null
+    ) {
         val event = Event
             .start()
             .endTimestamp()
@@ -138,6 +159,10 @@ class EventSender(private val eventRouter: MessageRouter<EventBatch>, private va
 
         if (exception != null) {
             event.exception(exception, true).status(Event.Status.FAILED)
+        }
+
+        if (status != null) {
+            event.status(status)
         }
 
         eventRouter.storeEvent(event, message?.parentEventId ?: rootEventId)

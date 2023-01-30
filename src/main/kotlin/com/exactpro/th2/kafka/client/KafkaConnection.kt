@@ -20,6 +20,7 @@ import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
+import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.google.protobuf.UnsafeByteOperations
 import mu.KotlinLogging
@@ -84,10 +85,7 @@ class KafkaConnection(
         val alias = message.metadata.id.connectionId.sessionAlias
         val kafkaStream = config.aliasToTopicAndKey[alias] ?: KafkaStream(config.aliasToTopic[alias] ?: error("Session alias '$alias' not found."), null)
         val value = message.body.toByteArray()
-
-        val messageIdBuilder = message.metadata.id.toBuilder()
-            .setBookName(factory.boxConfiguration.bookName)
-            .setDirection(Direction.SECOND)
+        val messageIdBuilder = message.metadata.id.toBuilder().setDirection(Direction.SECOND)
 
         messageProcessor.onMessage(
             RawMessage.newBuilder()
@@ -99,15 +97,11 @@ class KafkaConnection(
         producer.send(kafkaRecord) { _, exception: Throwable? ->
             when (exception) {
                 null -> {
-                    val msgText = "Message '${message.metadata.id}' sent to Kafka"
+                    val msgText = "Message '${message.logId}' sent to Kafka"
                     LOGGER.info(msgText)
                     eventSender.onEvent(msgText, "Send message", message)
                 }
-                else -> {
-                    val msgText = "Failed to send message '${message.metadata.id}' to Kafka"
-                    LOGGER.error(msgText, exception)
-                    eventSender.onEvent(msgText, "SendError", message, exception)
-                }
+                else -> throw RuntimeException("Failed to send message '${message.logId}' to Kafka", exception)
             }
         }
     }
@@ -118,8 +112,8 @@ class KafkaConnection(
 
         while (!Thread.currentThread().isInterrupted) {
             val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
-
             if (records.isEmpty) continue
+            LOGGER.trace { "Batch with ${records.count()} records polled from Kafka" }
 
             val topicsToSkip: MutableSet<String> = HashSet()
 

@@ -57,7 +57,7 @@ class Config(
     maxInactivityPeriodUnit: TimeUnit = TimeUnit.HOURS,
 
     /**
-     * The size of one batch
+     * The size of one batch (number of messages)
      */
     val batchSize: Int = 100,
 

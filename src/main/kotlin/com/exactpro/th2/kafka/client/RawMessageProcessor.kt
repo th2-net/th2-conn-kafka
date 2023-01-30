@@ -2,6 +2,7 @@ package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
+import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.message.toTimestamp
 import mu.KotlinLogging
 import java.time.Instant
@@ -9,8 +10,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.BlockingQueue
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.Lock
@@ -30,7 +29,7 @@ class RawMessageProcessor(
     private val batchFlusherExecutor = Executors.newSingleThreadScheduledExecutor()
 
     private val messageReceiverThread = thread(name = "message-receiver") {
-        val builders: ConcurrentMap<String, BatchHolder> = ConcurrentHashMap()
+        val builders: MutableMap<String, BatchHolder> = HashMap()
 
         while (true) {
             val messageBuilder: RawMessage.Builder = messageQueue.take()
@@ -58,13 +57,13 @@ class RawMessageProcessor(
         private var flusherFuture: Future<*> = CompletableFuture.completedFuture(null)
         private val lock: Lock = ReentrantLock()
 
-        fun addMessage(messageBuilder: RawMessage.Builder) {
-            lock.withLock {
-                batchBuilder.addMessages(messageBuilder.build())
-                when (batchBuilder.messagesCount) {
-                    1 -> flusherFuture = batchFlusherExecutor.schedule(::enqueueBatch, maxFlushTime, maxFlushTimeUnit)
-                    maxBatchSize -> enqueueBatch()
-                }
+        fun addMessage(messageBuilder: RawMessage.Builder) = lock.withLock {
+            val message = messageBuilder.build()
+            batchBuilder.addMessages(message)
+            LOGGER.trace { "Message ${message.logId} added to batch." }
+            when (batchBuilder.messagesCount) {
+                1 -> flusherFuture = batchFlusherExecutor.schedule(::enqueueBatch, maxFlushTime, maxFlushTimeUnit)
+                maxBatchSize -> enqueueBatch()
             }
         }
 
