@@ -99,7 +99,7 @@ fun main(args: Array<String>) {
             for (message in batch.messagesList) {
                 LOGGER.trace { "Message ${message.logId} extracted from batch." }
 
-                if (message.metadata.id.bookName?.equals(factory.boxConfiguration.bookName) == true) {
+                if (message.metadata.id.bookName?.equals(factory.boxConfiguration.bookName) == false) {
                     val errorText = "Expected bookName: '${factory.boxConfiguration.bookName}', actual '${message.metadata.id.bookName}' in message ${message.logId}"
                     LOGGER.error { errorText }
                     eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED)
