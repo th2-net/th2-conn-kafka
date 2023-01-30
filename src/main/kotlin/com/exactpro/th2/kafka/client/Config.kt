@@ -25,15 +25,18 @@ import kotlin.time.toDuration
 
 class Config(
     /**
-     * Match sessionAlias with topic
+     * Matches th2 sessions with Kafka topics
      */
     val aliasToTopic: Map<String, String> = emptyMap(),
 
     /**
-     * Match sessionAlias with topic and key
+     * Matches th2 sessions with Kafka topics and keys
      */
     val aliasToTopicAndKey: Map<String, KafkaStream> = emptyMap(),
 
+    /**
+     * This session group will be set for messages received from Kafka
+     */
     val sessionGroup: String? = null,
 
     /**
