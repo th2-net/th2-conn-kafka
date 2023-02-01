@@ -35,9 +35,16 @@ class Config(
     val aliasToTopicAndKey: Map<String, KafkaStream> = emptyMap(),
 
     /**
-     * This session group will be set for messages received from Kafka
+     * Matches th2 sessions with session groups
+     * Key: session group, value: list of session aliases
      */
-    val sessionGroup: String? = null,
+    sessionGroups: Map<String, List<String>> = emptyMap(),
+
+    /**
+     * This session group will be set for outgoing messages whose
+     * session alias does not exist in the "sessionGroups" parameter.
+     */
+    defaultSessionGroup: String? = null,
 
     /**
      * URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster
@@ -96,19 +103,30 @@ class Config(
 ) {
     @JsonIgnore
     val maxInactivityPeriod: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)
+
     @JsonIgnore
     val topicToAlias: Map<String, String> = aliasToTopic.map {
         require(it.value.isNotEmpty()) { "Topic can't be empty string in 'topicToAlias'" }
         require(it.key.isNotEmpty()) { "Alias can't be empty string in 'topicToAlias'" }
         it.value to it.key
     }.toMap()
+
     @JsonIgnore
     val topicAndKeyToAlias: Map<KafkaStream, String> = aliasToTopicAndKey.map {
         require(it.value.topic.isNotEmpty()) { "Topic can't be empty string in 'topicAndKeyToAlias'" }
         require(it.value.key?.isNotEmpty() ?: true) { "Key can't be empty string in 'topicAndKeyToAlias'" }
-        require(it.key.isNotEmpty()) { "Alias  can't be empty string in 'topicAndKeyToAlias'" }
+        require(it.key.isNotEmpty()) { "Alias can't be empty string in 'topicAndKeyToAlias'" }
         it.value to it.key
     }.toMap()
+
+    @JsonIgnore
+    val aliasToSessionGroup: Map<String, String> = sessionGroups.asSequence().flatMap { (group, aliases) ->
+        require(group.isNotEmpty()) { "Session group name can't be empty string in 'aliasToSessionGroup'" }
+        aliases.map { alias ->
+            require(alias.isNotEmpty()) { "Alias can't be empty string in 'aliasToSessionGroup'" }
+            alias to group
+        }
+    }.toMap().withDefault { alias -> defaultSessionGroup ?: alias }
 
     init {
         require(aliasToTopicAndKey.isNotEmpty() || aliasToTopic.isNotEmpty()) { "'aliasToKafkaStream' and 'aliasToTopic' can't both be empty" }
@@ -121,6 +139,7 @@ class Config(
 
         require(topicToAlias.size == aliasToTopic.size) { "Duplicated topic in 'aliasToTopic'" }
         require(topicAndKeyToAlias.size == aliasToTopicAndKey.size) { "Duplicated data stream in 'aliasToKafkaStream'" }
+        require(aliasToSessionGroup.keys.size == sessionGroups.values.sumOf { it.size }) { "Duplicated alias in 'sessionGroups'" }
 
         require(reconnectBackoffMaxMs > 0) { "'reconnectBackoffMaxMs' must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
         require(reconnectBackoffMs > 0) { "'reconnectBackoffMs' must be positive. Please, check the configuration. $reconnectBackoffMs" }

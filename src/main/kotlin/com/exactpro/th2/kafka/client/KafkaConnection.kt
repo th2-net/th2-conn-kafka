@@ -87,6 +87,10 @@ class KafkaConnection(
         val value = message.body.toByteArray()
         val messageIdBuilder = message.metadata.id.toBuilder().setDirection(Direction.SECOND)
 
+        messageIdBuilder.setConnectionId(
+            messageIdBuilder.connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup[alias])
+        )
+
         messageProcessor.onMessage(
             RawMessage.newBuilder()
                 .setMetadata(message.metadata.toBuilder().setId(messageIdBuilder))
@@ -141,7 +145,7 @@ class KafkaConnection(
                     .setConnectionId(
                         ConnectionID.newBuilder()
                             .setSessionAlias(alias)
-                            .apply { config.sessionGroup?.let { sessionGroup = it } }
+                            .setSessionGroup(config.aliasToSessionGroup[alias])
                     )
                     .setDirection(Direction.FIRST)
                 messageProcessor.onMessage(
