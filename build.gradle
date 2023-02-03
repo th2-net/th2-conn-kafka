@@ -4,6 +4,7 @@ plugins {
     id 'maven-publish'
     id 'com.palantir.docker' version '0.25.0'
     id 'application'
+    id "org.owasp.dependencycheck" version "7.4.4"
 }
 
 group 'com.exactpro.th2'
@@ -63,4 +64,8 @@ application {
     mainClassName 'com.exactpro.th2.KafkaMain'
 }
 applicationName = 'service'
+
+dependencyCheck {
+    formats=['SARIF']
+}
 
