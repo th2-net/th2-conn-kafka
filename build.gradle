@@ -47,10 +47,9 @@ jar {
 }
 
 dependencies {
+    api platform('com.exactpro.th2:bom:4.1.0')
+    implementation 'com.exactpro.th2:common:3.44.0'
 
-    implementation 'com.exactpro.th2:common:3.31.1'
-
-    implementation "org.slf4j:slf4j-log4j12"
     implementation "org.slf4j:slf4j-api"
 
     implementation group: 'org.apache.kafka', name: 'kafka_2.13', version: '2.8.0'
