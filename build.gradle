@@ -4,6 +4,7 @@ plugins {
     id 'application'
     id 'com.palantir.docker' version '0.25.0'
     id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
+    id "org.owasp.dependencycheck" version "7.4.4"
 }
 
 group 'com.exactpro.th2'
@@ -44,9 +45,9 @@ jar {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.0.2')
+    api platform('com.exactpro.th2:bom:4.1.0')
 
-    implementation 'com.exactpro.th2:common:5.0.0-dev-version-5-3838510969-SNAPSHOT'
+    implementation 'com.exactpro.th2:common:5.1.0-dev-version-5-4085018593-8adee33-SNAPSHOT'
 
     implementation 'org.apache.kafka:kafka_2.13:3.3.1'
     implementation 'io.github.microutils:kotlin-logging:3.0.0'
@@ -80,3 +81,8 @@ docker {
 tasks.withType(KotlinCompile).configureEach {
     kotlinOptions.jvmTarget = JavaVersion.VERSION_11
 }
+
+dependencyCheck {
+    formats=['SARIF']
+}
+

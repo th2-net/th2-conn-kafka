@@ -1,5 +1,4 @@
-# KafkaConnect (0.0.2)
-
+# KafkaConnect (0.0.3)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
@@ -88,7 +87,8 @@ spec:
 ```
 
 ## Release notes
-### 0.0.2
+
+### 0.0.3
 
 + Publishing to Kafka support
 + Kafka keys support
