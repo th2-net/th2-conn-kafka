@@ -1,7 +1,9 @@
 package com.exactpro.th2.kafka.client
 
+import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
+import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.message.toTimestamp
 import mu.KotlinLogging
@@ -12,6 +14,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.BlockingQueue
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
@@ -21,7 +24,6 @@ class RawMessageProcessor(
     private val maxBatchSize: Int,
     private val maxFlushTime: Long,
     private val maxFlushTimeUnit: TimeUnit,
-    private val sequenceProducer: (RawMessage.Builder) -> Long,
     private val onBatch: (RawMessageBatch) -> Unit
 ) : AutoCloseable {
     private val messageQueue: BlockingQueue<RawMessage.Builder> = LinkedBlockingQueue()
@@ -29,6 +31,8 @@ class RawMessageProcessor(
     private val batchFlusherExecutor = Executors.newSingleThreadScheduledExecutor()
 
     private val messageReceiverThread = thread(name = "message-receiver") {
+        val firstSequence: () -> Long = createSequence()
+        val secondSequence: () -> Long = createSequence()
         val builders: MutableMap<String, BatchHolder> = HashMap()
 
         while (true) {
@@ -37,7 +41,11 @@ class RawMessageProcessor(
 
             messageBuilder.metadataBuilder.idBuilder.apply {
                 timestamp = Instant.now().toTimestamp()
-                sequence = sequenceProducer(messageBuilder)
+                sequence = when (messageBuilder.direction) {
+                    Direction.FIRST -> firstSequence()
+                    Direction.SECOND -> secondSequence()
+                    else -> error("Unrecognized direction")
+                }
             }
 
             val sessionGroup: String = messageBuilder.metadata.id.connectionId.sessionGroup
@@ -106,5 +114,10 @@ class RawMessageProcessor(
         private val TERMINAL_MESSAGE = RawMessage.newBuilder()
         private val TERMINAL_BATCH = RawMessageBatch.newBuilder().build()
         private const val TERMINATION_WAIT_TIMEOUT_MS = 5_000L
+
+        private val Instant.epochNanos
+            get() = TimeUnit.SECONDS.toNanos(epochSecond) + nano
+
+        private fun createSequence(): () -> Long = AtomicLong(Instant.now().epochNanos)::incrementAndGet // TODO: we don't need atomicity here
     }
 }

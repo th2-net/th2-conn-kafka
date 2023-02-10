@@ -23,8 +23,6 @@ import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
-import com.exactpro.th2.common.grpc.Direction
-import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.factory.CommonFactory
@@ -32,13 +30,10 @@ import com.exactpro.th2.common.schema.message.DeliveryMetadata
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.kafka.client.utility.storeEvent
 import mu.KotlinLogging
-import java.time.Instant
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -67,17 +62,7 @@ fun main(args: Array<String>) {
         val config: Config = factory.getCustomConfiguration(Config::class.java)
         val messageRouterRawBatch = factory.messageRouterRawBatch
 
-        val firstSequence: () -> Long = createSequence()
-        val secondSequence: () -> Long = createSequence()
-        val sequenceProducer: (RawMessage.Builder) -> Long = {
-            when (it.direction) {
-                Direction.FIRST -> firstSequence()
-                Direction.SECOND -> secondSequence()
-                else -> error("Unrecognized direction")
-            }
-        }
-
-        val messageProcessor = RawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit, sequenceProducer) {
+        val messageProcessor = RawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit) {
             LOGGER.trace { "Sending batch with ${it.messagesCount} messages to MQ." }
             it.runCatching(messageRouterRawBatch::send)
                 .onFailure { e -> LOGGER.error(e) { "Could not send message batch to MQ: ${it.toJson()}" } }
@@ -102,7 +87,7 @@ fun main(args: Array<String>) {
                 if (message.metadata.id.bookName?.equals(factory.boxConfiguration.bookName) == false) {
                     val errorText = "Expected bookName: '${factory.boxConfiguration.bookName}', actual '${message.metadata.id.bookName}' in message ${message.logId}"
                     LOGGER.error { errorText }
-                    eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED)
+                    eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED, message = message)
                     continue
                 }
 
@@ -133,11 +118,6 @@ fun main(args: Array<String>) {
     shutdownLatch.await()
     LOGGER.info { "Microservice shutted down." }
 }
-
-private val Instant.epochNanos
-    get() = TimeUnit.SECONDS.toNanos(epochSecond) + nano
-
-fun createSequence(): () -> Long = AtomicLong(Instant.now().epochNanos)::incrementAndGet // TODO: we don't need atomicity here
 
 class EventSender(private val eventRouter: MessageRouter<EventBatch>, private val rootEventId: EventID) {
     fun onEvent(

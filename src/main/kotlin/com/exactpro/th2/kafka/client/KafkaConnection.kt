@@ -85,11 +85,11 @@ class KafkaConnection(
         val alias = message.metadata.id.connectionId.sessionAlias
         val kafkaStream = config.aliasToTopicAndKey[alias] ?: KafkaStream(config.aliasToTopic[alias] ?: error("Session alias '$alias' not found."), null)
         val value = message.body.toByteArray()
-        val messageIdBuilder = message.metadata.id.toBuilder().setDirection(Direction.SECOND)
-
-        messageIdBuilder.setConnectionId(
-            messageIdBuilder.connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup[alias])
-        )
+        val messageIdBuilder = message.metadata.id.toBuilder().apply {
+            direction = Direction.SECOND
+            bookName = factory.boxConfiguration.bookName
+            setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup[alias]))
+        }
 
         messageProcessor.onMessage(
             RawMessage.newBuilder()

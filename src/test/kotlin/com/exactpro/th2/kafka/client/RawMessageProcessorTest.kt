@@ -66,20 +66,10 @@ class RawMessageProcessorTest {
         maxFlushTime: Long,
         sendInterval: Long = 0L
     ): List<Pair<RawMessageBatch, Long>> {
-        val firstSequence: () -> Long = createSequence()
-        val secondSequence: () -> Long = createSequence()
-        val sequenceProducer: (RawMessage.Builder) -> Long = {
-            when (it.direction) {
-                Direction.FIRST -> firstSequence()
-                Direction.SECOND -> secondSequence()
-                else -> error("Unrecognized direction")
-            }
-        }
-
         val rnd = Random(0)
         val outputBatches: MutableList<Pair<RawMessageBatch, Long>> = ArrayList()
 
-        RawMessageProcessor(maxBatchSize, maxFlushTime, TimeUnit.MILLISECONDS, sequenceProducer) {
+        RawMessageProcessor(maxBatchSize, maxFlushTime, TimeUnit.MILLISECONDS) {
             outputBatches += it to Instant.now().toEpochMilli()
         }.use { batcher ->
 

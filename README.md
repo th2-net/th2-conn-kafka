@@ -19,23 +19,28 @@ This configuration should be specified in the custom configuration block in sche
         topic: "topic_04"
         key: null
 
-    sessionGroup: "session_alias_group_01"
+    sessionGroups:
+      session_alias_group_01: ["session_alias_01", "session_alias_02"]
+      session_alias_group_02: ["session_alias_03"]
+
+    defaultSessionGroup: "session_alias_group_02"
     bootstrapServers: "cp-kafka:9092"
     groupId: "consumer_group_01"
 
-    maxInactivityPeriod : 8,
-    maxInactivityPeriodTimeUnit: "HOURS",
-    batchSize: 100,
-    timeSpan: 1000,
-    timeSpanUnit : "MILLISECONDS",
-    reconnectBackoffMs: 50,
+    maxInactivityPeriod: 8
+    maxInactivityPeriodTimeUnit: "HOURS"
+    batchSize: 100
+    timeSpan: 1000
+    timeSpanUnit : "MILLISECONDS"
+    reconnectBackoffMs: 50
     reconnectBackoffMaxMs: 1000
 ```
 
 Parameters:
 + aliasToTopic - matches th2 sessions with Kafka topics **Note: Kafka does not guarantee message ordering within topic if topic contains more than one partition**
 + aliasToTopicAndKey - matches th2 sessions with Kafka topics and keys **Note: Kafka guarantees message ordering only within messages with the same non null key if topic contains more than one partition**
-+ sessionGroup - this session group will be set for messages received from Kafka
++ sessionGroups - match session group with sessions
++ defaultSessionGroup - this session group will be set for sessions not mentioned in `sessionGroups`
 + groupId - that ID will be used for Kafka connection
 + bootstrapServers - URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster
 + maxInactivityPeriod - if the period of inactivity is longer than this time, then start reading Kafka messages from the current moment. Should be positive.
