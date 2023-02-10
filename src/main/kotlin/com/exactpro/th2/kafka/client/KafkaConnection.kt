@@ -88,7 +88,7 @@ class KafkaConnection(
         val messageIdBuilder = message.metadata.id.toBuilder().apply {
             direction = Direction.SECOND
             bookName = factory.boxConfiguration.bookName
-            setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup[alias]))
+            setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup.getValue(alias)))
         }
 
         messageProcessor.onMessage(
@@ -145,7 +145,7 @@ class KafkaConnection(
                     .setConnectionId(
                         ConnectionID.newBuilder()
                             .setSessionAlias(alias)
-                            .setSessionGroup(config.aliasToSessionGroup[alias])
+                            .setSessionGroup(config.aliasToSessionGroup.getValue(alias))
                     )
                     .setDirection(Direction.FIRST)
                 messageProcessor.onMessage(
