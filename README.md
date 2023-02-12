@@ -8,13 +8,18 @@ This configuration should be specified in the custom configuration block in sche
   customConfig:
 
     aliasToTopic:
-      session_alias_01: "topic_01"
-      session_alias_02: "topic_02"
+      session_alias_01:
+        topic: "topic_01"
+        subscribe: true
+      session_alias_02:
+        topic: "topic_02"
+        subscribe: true
 
     aliasToTopicAndKey:
       session_alias_03:
         topic: "topic_03"
         key: "key_01"
+        subscribe: false
       session_alias_04:
         topic: "topic_04"
         key: null
@@ -39,7 +44,7 @@ This configuration should be specified in the custom configuration block in sche
 Parameters:
 + aliasToTopic - matches th2 sessions with Kafka topics **Note: Kafka does not guarantee message ordering within topic if topic contains more than one partition**
 + aliasToTopicAndKey - matches th2 sessions with Kafka topics and keys **Note: Kafka guarantees message ordering only within messages with the same non null key if topic contains more than one partition**
-+ sessionGroups - match session group with sessions
++ sessionGroups - match session group with sessions (key: session group, value: list of session aliases)
 + defaultSessionGroup - this session group will be set for sessions not mentioned in `sessionGroups`
 + groupId - that ID will be used for Kafka connection
 + bootstrapServers - URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster
@@ -74,7 +79,7 @@ Example of pins configuration:
 ```yaml
 spec:
   imageName: ghcr.io/th2-net/th2-conn-kafka
-  imageVersion: 0.0.2
+  imageVersion: 0.0.3
   type: th2-conn
 
   pins:
