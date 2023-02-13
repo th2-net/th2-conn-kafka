@@ -102,7 +102,6 @@ spec:
 
 + Publishing to Kafka support
 + Kafka keys support
-+ Migrated to Books & Pages concept
 + Session groups support
 
 ### 0.0.1
