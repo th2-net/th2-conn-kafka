@@ -33,7 +33,7 @@ This configuration should be specified in the custom configuration block in sche
     groupId: "consumer_group_01"
 
     maxInactivityPeriod: 8
-    maxInactivityPeriodTimeUnit: "HOURS"
+    maxInactivityPeriodUnit: "HOURS"
     batchSize: 100
     timeSpan: 1000
     timeSpanUnit : "MILLISECONDS"
