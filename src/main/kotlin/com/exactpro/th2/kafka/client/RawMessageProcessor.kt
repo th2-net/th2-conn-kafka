@@ -39,9 +39,9 @@ class RawMessageProcessor(
             val messageBuilder: RawMessage.Builder = messageQueue.take()
             if (messageBuilder === TERMINAL_MESSAGE) break
 
-            messageBuilder.metadataBuilder.idBuilder.apply {
+            messageBuilder.metadataBuilder.apply {
                 timestamp = Instant.now().toTimestamp()
-                sequence = when (messageBuilder.direction) {
+                idBuilder.sequence = when (messageBuilder.direction) {
                     Direction.FIRST -> firstSequence()
                     Direction.SECOND -> secondSequence()
                     else -> error("Unrecognized direction")

@@ -18,10 +18,10 @@ package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
+import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
 import com.exactpro.th2.common.message.logId
-import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.google.protobuf.UnsafeByteOperations
 import mu.KotlinLogging
 import org.apache.kafka.clients.admin.AdminClient
@@ -41,7 +41,6 @@ import java.util.Collections
 
 class KafkaConnection(
     private val config: Config,
-    private val factory: CommonFactory,
     private val messageProcessor: RawMessageProcessor,
     private val eventSender: EventSender,
     kafkaClientsFactory: KafkaClientsFactory
@@ -55,7 +54,6 @@ class KafkaConnection(
         val value = message.body.toByteArray()
         val messageIdBuilder = message.metadata.id.toBuilder().apply {
             direction = Direction.SECOND
-            bookName = factory.boxConfiguration.bookName
             setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup.getValue(alias)))
         }
 
@@ -106,7 +104,7 @@ class KafkaConnection(
                         ?: config.topicAndKeyToAlias[KafkaStream(record.topic(), record.key(), true)]
                         ?: continue
 
-                    val messageID = factory.newMessageIDBuilder()
+                    val messageID = MessageID.newBuilder()
                         .setConnectionId(
                             ConnectionID.newBuilder()
                                 .setSessionAlias(alias)

@@ -17,14 +17,10 @@
 package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.grpc.Direction
-import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
-import com.exactpro.th2.common.schema.box.configuration.BoxConfiguration
-import com.exactpro.th2.common.schema.factory.CommonFactory
 import java.time.Duration
 import com.google.protobuf.UnsafeByteOperations
 import org.apache.kafka.clients.consumer.Consumer
@@ -44,11 +40,6 @@ import kotlin.test.Test
 import kotlin.test.assertFailsWith
 
 class KafkaConnectionTest {
-    private val commonFactory: CommonFactory = mock {
-        on { boxConfiguration } doReturn BoxConfiguration().apply { bookName = "book_01" }
-        on { newMessageIDBuilder() } doReturn MessageID.newBuilder().setBookName("book_01")
-    }
-
     private val testMessageText = "QWERTY"
     private val messageProcessor: RawMessageProcessor = mock()
     private val eventSender: EventSender = mock()
@@ -88,7 +79,6 @@ class KafkaConnectionTest {
             aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", "key_03", true)),
             sessionGroups = mapOf("group_01" to listOf("alias_01"))
         ),
-        commonFactory,
         messageProcessor,
         eventSender,
         kafkaClientsFactory
@@ -119,7 +109,6 @@ class KafkaConnectionTest {
         verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture())
 
         val messageBuilder = messageBuilderCaptor.firstValue
-        assertEquals("book_01", messageBuilder.bookName)
         assertEquals("alias_01", messageBuilder.sessionAlias)
         assertEquals("group_01", messageBuilder.sessionGroup)
         assertEquals(Direction.SECOND, messageBuilder.direction)
@@ -151,7 +140,6 @@ class KafkaConnectionTest {
         verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture())
 
         val messageBuilder = messageBuilderCaptor.firstValue
-        assertEquals("book_01", messageBuilder.bookName)
         assertEquals("alias_03", messageBuilder.sessionAlias)
         assertEquals("alias_03", messageBuilder.sessionGroup)
         assertEquals(Direction.FIRST, messageBuilder.direction)
