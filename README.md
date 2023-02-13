@@ -49,7 +49,7 @@ Parameters:
 + groupId - that ID will be used for Kafka connection
 + bootstrapServers - URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster
 + maxInactivityPeriod - if the period of inactivity is longer than this time, then start reading Kafka messages from the current moment. Should be positive.
-+ maxInactivityPeriodTimeUnit - time unit for `maxInactivityPeriod`
++ maxInactivityPeriodUnit - time unit for `maxInactivityPeriod`
   + DAYS
   + HOURS
   + MINUTES
