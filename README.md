@@ -104,6 +104,10 @@ spec:
 + Kafka keys support
 + Session groups support
 
+### 0.0.2
+
++ Reusable workflow with dependency check
+
 ### 0.0.1
 
 + Initial version
