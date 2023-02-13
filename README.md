@@ -1,4 +1,4 @@
-# KafkaConnect (0.0.3)
+# KafkaConnect (0.1.0)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
@@ -33,12 +33,13 @@ This configuration should be specified in the custom configuration block in sche
     groupId: "consumer_group_01"
 
     maxInactivityPeriod: 8
-    maxInactivityPeriodTimeUnit: "HOURS"
+    maxInactivityPeriodUnit: "HOURS"
     batchSize: 100
     timeSpan: 1000
     timeSpanUnit : "MILLISECONDS"
     reconnectBackoffMs: 50
     reconnectBackoffMaxMs: 1000
+    kafkaConnectionEvents: true
 ```
 
 Parameters:
@@ -49,7 +50,7 @@ Parameters:
 + groupId - that ID will be used for Kafka connection
 + bootstrapServers - URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster
 + maxInactivityPeriod - if the period of inactivity is longer than this time, then start reading Kafka messages from the current moment. Should be positive.
-+ maxInactivityPeriodTimeUnit - time unit for `maxInactivityPeriod`
++ maxInactivityPeriodUnit - time unit for `maxInactivityPeriod`
   + DAYS
   + HOURS
   + MINUTES
@@ -62,6 +63,7 @@ Parameters:
 + timeSpanUnit time unit for `timeSpan`
 + reconnectBackoffMs - The amount of time in milliseconds to wait before attempting to reconnect to a given host. Should be positive.
 + reconnectBackoffMaxMs - The maximum amount of time in milliseconds to backoff/wait when reconnecting to a broker that has repeatedly failed to connect. If provided, the backoff per host will increase exponentially for each consecutive connection failure, up to this maximum. Once the maximum is reached, reconnection attempts will continue periodically with this fixed rate. To avoid connection storms, a randomization factor of 0.2 will be applied to the backoff resulting in a random range between 20% below and 20% above the computed value. Should be positive.
++ kafkaConnectionEvents - Generate TH2 events on lost connection and restore connection to Kafka. `false` by default.
 
 ## Reconnect behaviour
 
@@ -98,12 +100,19 @@ spec:
 
 ## Release notes
 
+### 0.1.0
+
++ Migrated to Books & Pages concept
+
 ### 0.0.3
 
 + Publishing to Kafka support
 + Kafka keys support
-+ Migrated to Books & Pages concept
 + Session groups support
+
+### 0.0.2
+
++ Reusable workflow with dependency check
 
 ### 0.0.1
 

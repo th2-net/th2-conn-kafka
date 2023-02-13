@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.kafka.client
 
+import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
@@ -33,6 +34,7 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.errors.TimeoutException
 import java.io.Closeable
 import java.time.Duration
 import java.time.Instant
@@ -77,13 +79,36 @@ class KafkaConnection(
         }
     }
 
+    private fun isKafkaAvailable(): Boolean = try {
+        consumer.listTopics(POLL_TIMEOUT)
+        true
+    } catch (e: TimeoutException) {
+        false
+    }
+
     override fun run() = try {
         val startTimestamp = Instant.now().toEpochMilli()
         consumer.subscribe(config.topicToAlias.keys + config.topicAndKeyToAlias.map { it.key.topic })
 
         while (!Thread.currentThread().isInterrupted) {
             val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
-            if (records.isEmpty) continue
+
+            if (records.isEmpty) {
+                if (config.kafkaConnectionEvents && !isKafkaAvailable()) {
+
+                    val failedToConnectMessage = "Failed to connect Kafka"
+                    LOGGER.error(failedToConnectMessage)
+                    eventSender.onEvent(failedToConnectMessage, CONNECTIVITY_EVENT_TYPE, status = Event.Status.FAILED)
+
+                    while (!isKafkaAvailable()) { /* wait for connection */ }
+
+                    val connectionRestoredMessage = "Kafka connection restored"
+                    LOGGER.debug(connectionRestoredMessage)
+                    eventSender.onEvent(connectionRestoredMessage, CONNECTIVITY_EVENT_TYPE)
+                }
+                continue
+            }
+
             LOGGER.trace { "Batch with ${records.count()} records polled from Kafka" }
 
             val topicsToSkip: MutableSet<String> = HashSet()
@@ -98,7 +123,7 @@ class KafkaConnection(
                     val msgText =
                         "Inactivity period exceeded ($inactivityPeriod ms). Skipping unread messages in '$topicToSkip' topic."
                     LOGGER.info { msgText }
-                    eventSender.onEvent(msgText, "ConnectivityServiceEvent")
+                    eventSender.onEvent(msgText, CONNECTIVITY_EVENT_TYPE)
                 } else {
                     if (record.topic() in topicsToSkip) continue
 
@@ -145,6 +170,7 @@ class KafkaConnection(
     companion object {
         private val LOGGER = KotlinLogging.logger {}
         private val POLL_TIMEOUT = Duration.ofMillis(100L)
+        private const val CONNECTIVITY_EVENT_TYPE = "ConnectivityServiceEvent"
 
         fun createTopics(config: Config) {
             if (config.topicsToCreate.isEmpty()) return
