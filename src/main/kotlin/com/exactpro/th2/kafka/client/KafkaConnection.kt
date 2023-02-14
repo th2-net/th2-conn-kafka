@@ -95,15 +95,16 @@ class KafkaConnection(
 
             if (records.isEmpty) {
                 if (config.kafkaConnectionEvents && !isKafkaAvailable()) {
-
                     val failedToConnectMessage = "Failed to connect Kafka"
                     LOGGER.error(failedToConnectMessage)
                     eventSender.onEvent(failedToConnectMessage, CONNECTIVITY_EVENT_TYPE, status = Event.Status.FAILED)
 
-                    while (!isKafkaAvailable()) { /* wait for connection */ }
+                    while (!Thread.currentThread().isInterrupted && !isKafkaAvailable()) {
+                        /* wait for connection */
+                    }
 
                     val connectionRestoredMessage = "Kafka connection restored"
-                    LOGGER.debug(connectionRestoredMessage)
+                    LOGGER.info(connectionRestoredMessage)
                     eventSender.onEvent(connectionRestoredMessage, CONNECTIVITY_EVENT_TYPE)
                 }
                 continue
@@ -154,6 +155,8 @@ class KafkaConnection(
                 }
             }
         }
+    } catch (e: InterruptedException) {
+        LOGGER.info("Polling thread interrupted")
     } catch (e: Exception) {
         val errorMessage = "Failed to read messages from Kafka"
         LOGGER.error(errorMessage, e)
