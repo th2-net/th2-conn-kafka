@@ -23,11 +23,13 @@ import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
-import com.exactpro.th2.common.message.logId
+import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
 import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.utils.message.id
+import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.kafka.client.utility.storeEvent
 import mu.KotlinLogging
 import java.util.Deque
@@ -65,7 +67,10 @@ fun main(args: Array<String>) {
         val messageProcessor = RawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit) {
             LOGGER.trace { "Sending batch with ${it.messagesCount} messages to MQ." }
             it.runCatching(messageRouterRawBatch::send)
-                .onFailure { e -> LOGGER.error(e) { "Could not send message batch to MQ: ${it.toJson()}" } }
+                .onFailure { e -> LOGGER.error(e) {
+                    it.messagesOrBuilderList
+                    "Could not send message batch to MQ: ${it.toJson()}" }
+                }
         }.apply { resources += "message processor" to ::close }
 
         val eventSender = EventSender(factory.eventBatchRouter, factory.rootEventId)
@@ -82,19 +87,20 @@ fun main(args: Array<String>) {
         val mqListener: (DeliveryMetadata, RawMessageBatch) -> Unit = { metadata, batch ->
             LOGGER.trace { "Batch with ${batch.messagesCount} messages received from MQ"}
             for (message in batch.messagesList) {
-                LOGGER.trace { "Message ${message.logId} extracted from batch." }
+                LOGGER.trace { "Message ${message.id.logId} extracted from batch." }
 
-                if (message.metadata.id.bookName?.equals(factory.boxConfiguration.bookName) == false) {
-                    val errorText = "Expected bookName: '${factory.boxConfiguration.bookName}', actual '${message.metadata.id.bookName}' in message ${message.logId}"
+                val bookName = message.bookName
+                if (bookName.isNotEmpty() && bookName != factory.boxConfiguration.bookName) {
+                    val errorText = "Expected bookName: '${factory.boxConfiguration.bookName}', actual '$bookName' in message ${message.id.logId}"
                     LOGGER.error { errorText }
-                    eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED, message = message)
+                    eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED)
                     continue
                 }
 
                 runCatching {
                     connection.publish(message)
                 }.onFailure {
-                    val errorText = "Could not publish message ${message.logId}. Consumer tag ${metadata.consumerTag}"
+                    val errorText = "Could not publish message ${message.id.logId}. Consumer tag ${metadata.consumerTag}"
                     LOGGER.error(it) { errorText }
                     eventSender.onEvent(errorText, "SendError", message, it)
                 }
@@ -108,7 +114,6 @@ fun main(args: Array<String>) {
         }.onFailure {
             throw IllegalStateException("Failed to subscribe to input queue", it)
         }
-
     }.onFailure {
         LOGGER.error(it) { "Error during working with Kafka connection. Exiting the program" }
         exitProcess(2)
@@ -125,7 +130,8 @@ class EventSender(private val eventRouter: MessageRouter<EventBatch>, private va
         type: String,
         message: RawMessage? = null,
         exception: Throwable? = null,
-        status: Event.Status? = null
+        status: Event.Status? = null,
+        parentEventId: EventID? = null
     ) {
         val event = Event
             .start()
@@ -134,7 +140,7 @@ class EventSender(private val eventRouter: MessageRouter<EventBatch>, private va
             .type(type)
 
         if (message != null) {
-            event.messageID(message.metadata.id)
+            event.messageID(message.id)
         }
 
         if (exception != null) {
@@ -145,6 +151,6 @@ class EventSender(private val eventRouter: MessageRouter<EventBatch>, private va
             event.status(status)
         }
 
-        eventRouter.storeEvent(event, message?.parentEventId ?: rootEventId)
+        eventRouter.storeEvent(event, parentEventId ?: rootEventId)
     }
 }

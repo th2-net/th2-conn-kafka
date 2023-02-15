@@ -20,9 +20,9 @@ import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.message.bookName
-import com.exactpro.th2.common.message.direction
-import com.exactpro.th2.common.message.sessionAlias
-import com.exactpro.th2.common.message.sessionGroup
+import com.exactpro.th2.common.utils.message.direction
+import com.exactpro.th2.common.utils.message.sessionAlias
+import com.exactpro.th2.common.utils.message.sessionGroup
 import com.exactpro.th2.common.schema.box.configuration.BoxConfiguration
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import java.time.Duration
@@ -125,7 +125,7 @@ class KafkaConnectionTest {
         assertThat(kafkaRecord.topic()).isEqualTo("topic_01")
         assertThat(kafkaRecord.key()).isNull()
         assertThat(String(kafkaRecord.value())).isEqualTo(testMessageText)
-        verify(eventSender, only()).onEvent(any(), eq("Send message"), eq(outMessage), eq(null), eq(null))
+        verify(eventSender, only()).onEvent(any(), eq("Send message"), eq(outMessage), eq(null), eq(null), eq(null))
     }
 
     @Test

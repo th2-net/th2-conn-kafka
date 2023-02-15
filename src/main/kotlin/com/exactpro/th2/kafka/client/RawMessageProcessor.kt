@@ -3,9 +3,11 @@ package com.exactpro.th2.kafka.client
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
-import com.exactpro.th2.common.message.direction
-import com.exactpro.th2.common.message.logId
-import com.exactpro.th2.common.message.toTimestamp
+import com.exactpro.th2.common.utils.message.id
+import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.common.utils.message.toTimestamp
+import com.exactpro.th2.common.utils.message.direction
+import com.exactpro.th2.common.utils.message.sessionGroup
 import mu.KotlinLogging
 import java.time.Instant
 import java.util.concurrent.Executors
@@ -49,7 +51,7 @@ class RawMessageProcessor(
                 }
             }
 
-            val sessionGroup: String = messageBuilder.metadata.id.connectionId.sessionGroup
+            val sessionGroup: String = checkNotNull(messageBuilder.sessionGroup) { "sessionGroup should be assigned to all messages" }
             val message = messageBuilder.build()
             onMessageBuilt(message)
             builders.getOrPut(sessionGroup, ::BatchHolder).addMessage(message)
@@ -70,7 +72,7 @@ class RawMessageProcessor(
 
         fun addMessage(message: RawMessage) = lock.withLock {
             batchBuilder.addMessages(message)
-            LOGGER.trace { "Message ${message.logId} added to batch." }
+            LOGGER.trace { "Message ${message.id.logId} added to batch." }
             when (batchBuilder.messagesCount) {
                 1 -> flusherFuture = batchFlusherExecutor.schedule(::enqueueBatch, maxFlushTime, maxFlushTimeUnit)
                 maxBatchSize -> enqueueBatch()

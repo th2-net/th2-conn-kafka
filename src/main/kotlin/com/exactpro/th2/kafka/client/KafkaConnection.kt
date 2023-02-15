@@ -21,7 +21,9 @@ import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
-import com.exactpro.th2.common.message.logId
+import com.exactpro.th2.common.utils.message.id
+import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.common.utils.message.sessionAlias
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.google.protobuf.UnsafeByteOperations
 import mu.KotlinLogging
@@ -53,10 +55,10 @@ class KafkaConnection(
     private val producer: Producer<String, ByteArray> = kafkaClientsFactory.getKafkaProducer()
 
     fun publish(message: RawMessage) {
-        val alias = message.metadata.id.connectionId.sessionAlias
+        val alias = message.sessionAlias ?: error("Message '${message.id.logId}' does not contain session alias.")
         val kafkaStream = config.aliasToTopicAndKey[alias] ?: KafkaStream(config.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."), null)
         val value = message.body.toByteArray()
-        val messageIdBuilder = message.metadata.id.toBuilder().apply {
+        val messageIdBuilder = message.id.toBuilder().apply {
             direction = Direction.SECOND
             bookName = factory.boxConfiguration.bookName
             setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup.getValue(alias)))
@@ -74,11 +76,11 @@ class KafkaConnection(
         producer.send(kafkaRecord) { _, exception: Throwable? ->
             val outMessage = messageFuture.get()
             if (exception == null) {
-                val msgText = "Message '${outMessage.logId}' sent to Kafka"
+                val msgText = "Message '${outMessage.id.logId}' sent to Kafka"
                 LOGGER.info(msgText)
                 eventSender.onEvent(msgText, "Send message", outMessage)
             } else {
-                throw RuntimeException("Failed to send message '${outMessage.logId}' to Kafka", exception)
+                throw RuntimeException("Failed to send message '${outMessage.id.logId}' to Kafka", exception)
             }
         }
     }
