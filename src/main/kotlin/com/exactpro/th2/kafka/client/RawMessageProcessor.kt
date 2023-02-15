@@ -26,7 +26,7 @@ class RawMessageProcessor(
     private val maxFlushTimeUnit: TimeUnit,
     private val onBatch: (RawMessageBatch) -> Unit
 ) : AutoCloseable {
-    private val messageQueue: BlockingQueue<RawMessage.Builder> = LinkedBlockingQueue()
+    private val messageQueue: BlockingQueue<Pair<RawMessage.Builder, (RawMessage) -> Unit>> = LinkedBlockingQueue()
     private val batchQueue: BlockingQueue<RawMessageBatch> = LinkedBlockingQueue()
     private val batchFlusherExecutor = Executors.newSingleThreadScheduledExecutor()
 
@@ -36,8 +36,9 @@ class RawMessageProcessor(
         val builders: MutableMap<String, BatchHolder> = HashMap()
 
         while (true) {
-            val messageBuilder: RawMessage.Builder = messageQueue.take()
-            if (messageBuilder === TERMINAL_MESSAGE) break
+            val messageAndCallback = messageQueue.take()
+            if (messageAndCallback === TERMINAL_MESSAGE) break
+            val (messageBuilder, onMessageBuilt) = messageAndCallback
 
             messageBuilder.metadataBuilder.idBuilder.apply {
                 timestamp = Instant.now().toTimestamp()
@@ -49,7 +50,9 @@ class RawMessageProcessor(
             }
 
             val sessionGroup: String = messageBuilder.metadata.id.connectionId.sessionGroup
-            builders.getOrPut(sessionGroup, ::BatchHolder).addMessage(messageBuilder)
+            val message = messageBuilder.build()
+            onMessageBuilt(message)
+            builders.getOrPut(sessionGroup, ::BatchHolder).addMessage(message)
         }
 
         builders.values.forEach(BatchHolder::enqueueBatch)
@@ -65,8 +68,7 @@ class RawMessageProcessor(
         private var flusherFuture: Future<*> = CompletableFuture.completedFuture(null)
         private val lock: Lock = ReentrantLock()
 
-        fun addMessage(messageBuilder: RawMessage.Builder) = lock.withLock {
-            val message = messageBuilder.build()
+        fun addMessage(message: RawMessage) = lock.withLock {
             batchBuilder.addMessages(message)
             LOGGER.trace { "Message ${message.logId} added to batch." }
             when (batchBuilder.messagesCount) {
@@ -92,8 +94,8 @@ class RawMessageProcessor(
         }
     }
 
-    fun onMessage(messageBuilder: RawMessage.Builder) {
-        messageQueue.add(messageBuilder)
+    fun onMessage(messageBuilder: RawMessage.Builder, onMessageBuilt: (RawMessage) -> Unit = EMPTY_CALLBACK) {
+        messageQueue.add(messageBuilder to onMessageBuilt)
     }
 
     override fun close() {
@@ -111,7 +113,8 @@ class RawMessageProcessor(
 
     companion object {
         private val LOGGER = KotlinLogging.logger {}
-        private val TERMINAL_MESSAGE = RawMessage.newBuilder()
+        private val EMPTY_CALLBACK: (RawMessage) -> Unit = {}
+        private val TERMINAL_MESSAGE: Pair<RawMessage.Builder, (RawMessage) -> Unit> = RawMessage.newBuilder() to EMPTY_CALLBACK
         private val TERMINAL_BATCH = RawMessageBatch.newBuilder().build()
         private const val TERMINATION_WAIT_TIMEOUT_MS = 5_000L
 

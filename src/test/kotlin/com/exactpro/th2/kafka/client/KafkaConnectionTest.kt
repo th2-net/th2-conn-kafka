@@ -33,15 +33,14 @@ import org.apache.kafka.clients.consumer.ConsumerRecords
 import org.apache.kafka.clients.producer.Callback
 import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerRecord
-import org.junit.jupiter.api.Assertions.*
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import kotlin.test.Test
 import org.mockito.kotlin.*
 import java.lang.IllegalStateException
 import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-
-import kotlin.test.Test
-import kotlin.test.assertFailsWith
 
 class KafkaConnectionTest {
     private val commonFactory: CommonFactory = mock {
@@ -104,26 +103,29 @@ class KafkaConnectionTest {
 
         connection.publish(testMessage)
 
-        val recordCaptor = argumentCaptor<ProducerRecord<String, ByteArray>>()
-        val callbackCaptor = argumentCaptor<Callback>()
-        verify(kafkaProducer, only()).send(recordCaptor.capture(), callbackCaptor.capture())
-
-        callbackCaptor.firstValue.onCompletion(null, null)
-        val kafkaRecord = recordCaptor.firstValue
-        assertEquals(kafkaRecord.topic(), "topic_01")
-        assertEquals(null, kafkaRecord.key())
-        assertEquals(testMessageText, String(kafkaRecord.value()))
-        verify(eventSender, only()).onEvent(any(), eq("Send message"), eq(testMessage), eq(null), eq(null))
-
         val messageBuilderCaptor = argumentCaptor<RawMessage.Builder>()
-        verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture())
+        val processorCallbackCaptor = argumentCaptor<(RawMessage) -> Unit>()
+        verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture(), processorCallbackCaptor.capture())
 
-        val messageBuilder = messageBuilderCaptor.firstValue
-        assertEquals("book_01", messageBuilder.bookName)
-        assertEquals("alias_01", messageBuilder.sessionAlias)
-        assertEquals("group_01", messageBuilder.sessionGroup)
-        assertEquals(Direction.SECOND, messageBuilder.direction)
-        assertEquals(testMessageText, messageBuilder.body.toStringUtf8())
+        val outMessage = messageBuilderCaptor.firstValue.build()
+        assertThat(outMessage.bookName).isEqualTo("book_01")
+        assertThat(outMessage.sessionAlias).isEqualTo("alias_01")
+        assertThat(outMessage.sessionGroup).isEqualTo("group_01")
+        assertThat(outMessage.direction).isEqualTo(Direction.SECOND)
+        assertThat(outMessage.body.toStringUtf8()).isEqualTo(testMessageText)
+
+        processorCallbackCaptor.firstValue.invoke(outMessage) // complete CompletableFuture
+
+        val recordCaptor = argumentCaptor<ProducerRecord<String, ByteArray>>()
+        val producerCallbackCaptor = argumentCaptor<Callback>()
+        verify(kafkaProducer, only()).send(recordCaptor.capture(), producerCallbackCaptor.capture())
+
+        producerCallbackCaptor.firstValue.onCompletion(null, null)
+        val kafkaRecord = recordCaptor.firstValue
+        assertThat(kafkaRecord.topic()).isEqualTo("topic_01")
+        assertThat(kafkaRecord.key()).isNull()
+        assertThat(String(kafkaRecord.value())).isEqualTo(testMessageText)
+        verify(eventSender, only()).onEvent(any(), eq("Send message"), eq(outMessage), eq(null), eq(null))
     }
 
     @Test
@@ -134,9 +136,9 @@ class KafkaConnectionTest {
             }
             .build()
 
-        assertFailsWith<IllegalStateException> {
-            connection.publish(testMessage)
-        }
+        assertThatThrownBy { connection.publish(testMessage) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("alias")
     }
 
     @Test
@@ -148,13 +150,13 @@ class KafkaConnectionTest {
         executor.awaitTermination(1000, TimeUnit.SECONDS)
 
         val messageBuilderCaptor = argumentCaptor<RawMessage.Builder>()
-        verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture())
+        verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture(), any())
 
         val messageBuilder = messageBuilderCaptor.firstValue
-        assertEquals("book_01", messageBuilder.bookName)
-        assertEquals("alias_03", messageBuilder.sessionAlias)
-        assertEquals("alias_03", messageBuilder.sessionGroup)
-        assertEquals(Direction.FIRST, messageBuilder.direction)
-        assertEquals(testMessageText, messageBuilder.body.toStringUtf8())
+        assertThat(messageBuilder.bookName).isEqualTo("book_01")
+        assertThat(messageBuilder.sessionAlias).isEqualTo("alias_03")
+        assertThat(messageBuilder.sessionGroup).isEqualTo("alias_03") // if no group name provided sessionAlias is used as group name
+        assertThat(messageBuilder.direction).isEqualTo(Direction.FIRST)
+        assertThat(messageBuilder.body.toStringUtf8()).isEqualTo(testMessageText)
     }
 }

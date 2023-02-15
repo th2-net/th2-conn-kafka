@@ -27,7 +27,7 @@ import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.util.toInstant
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.data.Percentage
-import org.junit.jupiter.api.Test
+import kotlin.test.Test
 import java.time.Instant
 import java.util.EnumMap
 import java.util.Random

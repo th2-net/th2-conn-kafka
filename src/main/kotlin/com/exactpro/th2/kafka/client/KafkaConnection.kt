@@ -40,6 +40,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.HashSet
 import java.util.Collections
+import java.util.concurrent.CompletableFuture
 
 class KafkaConnection(
     private val config: Config,
@@ -61,20 +62,23 @@ class KafkaConnection(
             setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup.getValue(alias)))
         }
 
+        val messageFuture = CompletableFuture<RawMessage>()
         messageProcessor.onMessage(
             RawMessage.newBuilder()
                 .setMetadata(message.metadata.toBuilder().setId(messageIdBuilder))
-                .setBody(message.body)
+                .setBody(message.body),
+            messageFuture::complete
         )
 
         val kafkaRecord = ProducerRecord<String, ByteArray>(kafkaStream.topic, kafkaStream.key, value)
         producer.send(kafkaRecord) { _, exception: Throwable? ->
+            val outMessage = messageFuture.get()
             if (exception == null) {
-                val msgText = "Message '${message.logId}' sent to Kafka"
+                val msgText = "Message '${outMessage.logId}' sent to Kafka"
                 LOGGER.info(msgText)
-                eventSender.onEvent(msgText, "Send message", message)
+                eventSender.onEvent(msgText, "Send message", outMessage)
             } else {
-                throw RuntimeException("Failed to send message '${message.logId}' to Kafka", exception)
+                throw RuntimeException("Failed to send message '${outMessage.logId}' to Kafka", exception)
             }
         }
     }

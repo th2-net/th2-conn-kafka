@@ -16,10 +16,8 @@
 
 package com.exactpro.th2.kafka.client
 
-import org.junit.jupiter.api.Assertions.*
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertFailsWith
 
 class ConfigTest {
     @Test
@@ -42,57 +40,50 @@ class ConfigTest {
 
     @Test
     fun `empty alias mappings`() {
-        val e = assertFailsWith<IllegalArgumentException> {
-            Config()
-        }
-        assertNotNull(e.message)
-        assertContains(e.message!!, "aliasToTopic")
-        assertContains(e.message!!, "aliasToTopicAndKey")
+        assertThatThrownBy { Config() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContainingAll("aliasToTopic", "aliasToTopicAndKey")
     }
 
     @Test
     fun `duplicated aliases`() {
-        val e = assertFailsWith<IllegalArgumentException> {
-            Config(
-                aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01"), "alias_02" to KafkaTopic("topic_02")),
-                aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", null), "alias_01" to KafkaStream("topic_04", null))
-            )
-        }
-        assertNotNull(e.message)
-        assertContains(e.message!!, "aliasToTopic")
-        assertContains(e.message!!, "aliasToTopicAndKey")
+        assertThatThrownBy { Config(
+            aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01"), "alias_02" to KafkaTopic("topic_02")),
+            aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", null), "alias_01" to KafkaStream("topic_04", null))
+        ) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContainingAll("aliasToTopic", "aliasToTopicAndKey")
     }
 
     @Test
     fun `duplicated topic in aliasToTopic`() {
-        val e = assertFailsWith<IllegalArgumentException> {
+        assertThatThrownBy {
             Config(aliasToTopic = mapOf(
                 "alias_01" to KafkaTopic("topic_01"),
                 "alias_02" to KafkaTopic("topic_02"),
                 "alias_03" to KafkaTopic("topic_01")
             ))
         }
-        assertNotNull(e.message)
-        assertContains(e.message!!, "aliasToTopic")
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContainingAll("aliasToTopic")
     }
 
     @Test
     fun `duplicated stream in aliasToTopicAndKey`() {
-        val e = assertFailsWith<IllegalArgumentException> {
+        assertThatThrownBy {
             Config(aliasToTopicAndKey = mapOf(
                 "alias_01" to KafkaStream("topic_01", null),
                 "alias_02" to KafkaStream("topic_02", null),
                 "alias_03" to KafkaStream("topic_01", null)
             ))
         }
-        assertNotNull(e.message)
-        assertContains(e.message!!, "aliasToTopic")
-        assertContains(e.message!!, "aliasToTopicAndKey")
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContainingAll ("aliasToTopic", "aliasToTopicAndKey")
     }
 
     @Test
     fun `same topics in aliasToTopicAndKey and aliasToTopic`() {
-        val e = assertFailsWith<IllegalArgumentException> {
+        assertThatThrownBy {
             Config(
                 aliasToTopic = mapOf(
                     "alias_01" to KafkaTopic("topic_01"),
@@ -105,14 +96,13 @@ class ConfigTest {
                 )
             )
         }
-        assertNotNull(e.message)
-        assertContains(e.message!!, "aliasToTopic")
-        assertContains(e.message!!, "aliasToTopicAndKey")
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContainingAll ("aliasToTopic", "aliasToTopicAndKey")
     }
 
     @Test
     fun `duplicated alias in sessionGroups`() {
-        val e = assertFailsWith<IllegalArgumentException> {
+        assertThatThrownBy {
             Config(
                 aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01")),
                 sessionGroups = mapOf(
@@ -122,7 +112,7 @@ class ConfigTest {
                 )
             )
         }
-        assertNotNull(e.message)
-        assertContains(e.message!!, "sessionGroups")
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContainingAll ("sessionGroups")
     }
 }
