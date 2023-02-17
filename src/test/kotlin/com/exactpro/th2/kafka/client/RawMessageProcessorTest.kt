@@ -135,7 +135,7 @@ class RawMessageProcessorTest {
                 currentSequences[message.direction] = message.sequence
 
                 // verify timestamp ordering
-                val timestamp = with(message.metadata.id.timestamp) {
+                val timestamp = with(message.metadata.timestamp) {
                     TimeUnit.SECONDS.toNanos(seconds) + nanos
                 }
                 assertThat(timestamp)
@@ -164,7 +164,7 @@ class RawMessageProcessorTest {
             .forEach { (_, batchesWithTimestamp) ->
                 batchesWithTimestamp.asSequence()
                     .forEachIndexed { index, (batch, endTimestamp) ->
-                        val startTimestamp = batch.getMessages(0).metadata.id.timestamp.toInstant().toEpochMilli()
+                        val startTimestamp = batch.getMessages(0).metadata.timestamp.toInstant().toEpochMilli()
                         val flushTime = endTimestamp - startTimestamp
                         if (index < batchesWithTimestamp.lastIndex) {
                             assertThat(flushTime)

@@ -100,10 +100,6 @@ spec:
 
 ## Release notes
 
-### 0.1.0
-
-+ Migrated to Books & Pages concept
-
 ### 0.0.3
 
 + Publishing to Kafka support

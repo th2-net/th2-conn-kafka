@@ -17,14 +17,10 @@
 package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.grpc.Direction
-import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.message.bookName
-import com.exactpro.th2.common.utils.message.direction
-import com.exactpro.th2.common.utils.message.sessionAlias
-import com.exactpro.th2.common.utils.message.sessionGroup
-import com.exactpro.th2.common.schema.box.configuration.BoxConfiguration
-import com.exactpro.th2.common.schema.factory.CommonFactory
+import com.exactpro.th2.common.message.direction
+import com.exactpro.th2.common.message.sessionAlias
+import com.exactpro.th2.common.message.sessionGroup
 import java.time.Duration
 import com.google.protobuf.UnsafeByteOperations
 import org.apache.kafka.clients.consumer.Consumer
@@ -43,11 +39,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class KafkaConnectionTest {
-    private val commonFactory: CommonFactory = mock {
-        on { boxConfiguration } doReturn BoxConfiguration().apply { bookName = "book_01" }
-        on { newMessageIDBuilder() } doReturn MessageID.newBuilder().setBookName("book_01")
-    }
-
     private val testMessageText = "QWERTY"
     private val messageProcessor: RawMessageProcessor = mock()
     private val eventSender: EventSender = mock()
@@ -87,7 +78,6 @@ class KafkaConnectionTest {
             aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", "key_03", true)),
             sessionGroups = mapOf("group_01" to listOf("alias_01"))
         ),
-        commonFactory,
         messageProcessor,
         eventSender,
         kafkaClientsFactory
@@ -108,7 +98,6 @@ class KafkaConnectionTest {
         verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture(), processorCallbackCaptor.capture())
 
         val outMessage = messageBuilderCaptor.firstValue.build()
-        assertThat(outMessage.bookName).isEqualTo("book_01")
         assertThat(outMessage.sessionAlias).isEqualTo("alias_01")
         assertThat(outMessage.sessionGroup).isEqualTo("group_01")
         assertThat(outMessage.direction).isEqualTo(Direction.SECOND)
@@ -153,7 +142,6 @@ class KafkaConnectionTest {
         verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture(), any())
 
         val messageBuilder = messageBuilderCaptor.firstValue
-        assertThat(messageBuilder.bookName).isEqualTo("book_01")
         assertThat(messageBuilder.sessionAlias).isEqualTo("alias_03")
         assertThat(messageBuilder.sessionGroup).isEqualTo("alias_03") // if no group name provided sessionAlias is used as group name
         assertThat(messageBuilder.direction).isEqualTo(Direction.FIRST)

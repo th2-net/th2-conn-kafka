@@ -3,11 +3,10 @@ package com.exactpro.th2.kafka.client
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
-import com.exactpro.th2.common.utils.message.id
-import com.exactpro.th2.common.utils.message.logId
-import com.exactpro.th2.common.utils.message.toTimestamp
-import com.exactpro.th2.common.utils.message.direction
-import com.exactpro.th2.common.utils.message.sessionGroup
+import com.exactpro.th2.common.message.direction
+import com.exactpro.th2.common.message.logId
+import com.exactpro.th2.common.message.sessionGroup
+import com.exactpro.th2.common.message.toTimestamp
 import mu.KotlinLogging
 import java.time.Instant
 import java.util.concurrent.Executors
@@ -42,9 +41,9 @@ class RawMessageProcessor(
             if (messageAndCallback === TERMINAL_MESSAGE) break
             val (messageBuilder, onMessageBuilt) = messageAndCallback
 
-            messageBuilder.metadataBuilder.idBuilder.apply {
+            messageBuilder.metadataBuilder.apply {
                 timestamp = Instant.now().toTimestamp()
-                sequence = when (messageBuilder.direction) {
+                idBuilder.sequence = when (messageBuilder.direction) {
                     Direction.FIRST -> firstSequence()
                     Direction.SECOND -> secondSequence()
                     else -> error("Unrecognized direction")
@@ -72,7 +71,7 @@ class RawMessageProcessor(
 
         fun addMessage(message: RawMessage) = lock.withLock {
             batchBuilder.addMessages(message)
-            LOGGER.trace { "Message ${message.id.logId} added to batch." }
+            LOGGER.trace { "Message ${message.logId} added to batch." }
             when (batchBuilder.messagesCount) {
                 1 -> flusherFuture = batchFlusherExecutor.schedule(::enqueueBatch, maxFlushTime, maxFlushTimeUnit)
                 maxBatchSize -> enqueueBatch()
