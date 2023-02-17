@@ -1,18 +1,17 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
-    id 'java'
-    id 'java-library'
-    id 'maven-publish'
-    id 'com.palantir.docker' version '0.25.0'
     id 'application'
+    id 'com.palantir.docker' version '0.25.0'
+    id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
     id "org.owasp.dependencycheck" version "7.4.4"
 }
 
 group 'com.exactpro.th2'
 version release_version
 
-sourceCompatibility = 11
-targetCompatibility = 11
-
+sourceCompatibility = JavaVersion.VERSION_11
+targetCompatibility = JavaVersion.VERSION_11
 
 repositories {
     mavenCentral()
@@ -24,9 +23,8 @@ repositories {
         name 'Sonatype_releases'
         url 'https://s01.oss.sonatype.org/content/repositories/releases/'
     }
-    mavenLocal()
 
-    configurations.all {
+    configurations.configureEach {
         resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
         resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
     }
@@ -48,23 +46,43 @@ jar {
 
 dependencies {
     api platform('com.exactpro.th2:bom:4.1.0')
-    implementation 'com.exactpro.th2:common:3.44.0'
+    implementation 'com.exactpro.th2:common:5.1.0-dev-version-5-4085018593-8adee33-SNAPSHOT'
+    implementation 'com.exactpro.th2:common-utils:0.0.1-book-and-page-3836172629-SNAPSHOT'
 
-    implementation "org.slf4j:slf4j-api"
+    implementation 'org.apache.kafka:kafka-clients:3.4.0'
 
-    implementation group: 'org.apache.kafka', name: 'kafka_2.13', version: '3.3.1'
-    implementation 'io.reactivex.rxjava3:rxjava:3.0.4'
-
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.7.2'
-
+    testImplementation 'org.jetbrains.kotlin:kotlin-test-junit5'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:4.1.0'
+    testImplementation 'org.mockito:mockito-inline:5.1.1'
+    testImplementation 'org.assertj:assertj-core:3.24.2'
 }
+
+test {
+    useJUnitPlatform()
+}
+
+applicationName = 'service'
 
 application {
-    mainClassName 'com.exactpro.th2.KafkaMain'
+    mainClass = 'com.exactpro.th2.kafka.client.Main'
 }
-applicationName = 'service'
+
+distTar {
+    archiveFileName = "${applicationName}.tar"
+}
+
+dockerPrepare {
+    dependsOn distTar
+}
+
+docker {
+    copySpec.from(tarTree("$buildDir/distributions/${applicationName}.tar"))
+}
+
+tasks.withType(KotlinCompile).configureEach {
+    kotlinOptions.jvmTarget = JavaVersion.VERSION_11
+}
 
 dependencyCheck {
     formats=['SARIF']
 }
-
