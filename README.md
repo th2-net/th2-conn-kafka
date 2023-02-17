@@ -1,4 +1,4 @@
-# KafkaConnect (0.0.3)
+# KafkaConnect (0.1.0)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
@@ -39,6 +39,7 @@ This configuration should be specified in the custom configuration block in sche
     timeSpanUnit : "MILLISECONDS"
     reconnectBackoffMs: 50
     reconnectBackoffMaxMs: 1000
+    kafkaConnectionEvents: true
 ```
 
 Parameters:
@@ -62,6 +63,7 @@ Parameters:
 + timeSpanUnit time unit for `timeSpan`
 + reconnectBackoffMs - The amount of time in milliseconds to wait before attempting to reconnect to a given host. Should be positive.
 + reconnectBackoffMaxMs - The maximum amount of time in milliseconds to backoff/wait when reconnecting to a broker that has repeatedly failed to connect. If provided, the backoff per host will increase exponentially for each consecutive connection failure, up to this maximum. Once the maximum is reached, reconnection attempts will continue periodically with this fixed rate. To avoid connection storms, a randomization factor of 0.2 will be applied to the backoff resulting in a random range between 20% below and 20% above the computed value. Should be positive.
++ kafkaConnectionEvents - Generate TH2 events on lost connection and restore connection to Kafka. `false` by default.
 
 ## Reconnect behaviour
 
@@ -97,6 +99,10 @@ spec:
 ```
 
 ## Release notes
+
+### 0.1.0
+
++ Migrated to Books & Pages concept
 
 ### 0.0.3
 

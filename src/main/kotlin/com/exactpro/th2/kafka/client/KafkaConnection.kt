@@ -16,12 +16,15 @@
 
 package com.exactpro.th2.kafka.client
 
+import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
-import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
-import com.exactpro.th2.common.message.logId
+import com.exactpro.th2.common.utils.message.id
+import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.common.utils.message.sessionAlias
+import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.google.protobuf.UnsafeByteOperations
 import mu.KotlinLogging
 import org.apache.kafka.clients.admin.AdminClient
@@ -33,14 +36,17 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.errors.TimeoutException
 import java.io.Closeable
 import java.time.Duration
 import java.time.Instant
 import java.util.HashSet
 import java.util.Collections
+import java.util.concurrent.CompletableFuture
 
 class KafkaConnection(
     private val config: Config,
+    private val factory: CommonFactory,
     private val messageProcessor: RawMessageProcessor,
     private val eventSender: EventSender,
     kafkaClientsFactory: KafkaClientsFactory
@@ -49,30 +55,41 @@ class KafkaConnection(
     private val producer: Producer<String, ByteArray> = kafkaClientsFactory.getKafkaProducer()
 
     fun publish(message: RawMessage) {
-        val alias = message.metadata.id.connectionId.sessionAlias
+        val alias = message.sessionAlias ?: error("Message '${message.id.logId}' does not contain session alias.")
         val kafkaStream = config.aliasToTopicAndKey[alias] ?: KafkaStream(config.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."), null)
         val value = message.body.toByteArray()
-        val messageIdBuilder = message.metadata.id.toBuilder().apply {
+        val messageIdBuilder = message.id.toBuilder().apply {
             direction = Direction.SECOND
+            bookName = factory.boxConfiguration.bookName
             setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup.getValue(alias)))
         }
 
+        val messageFuture = CompletableFuture<RawMessage>()
         messageProcessor.onMessage(
             RawMessage.newBuilder()
                 .setMetadata(message.metadata.toBuilder().setId(messageIdBuilder))
-                .setBody(message.body)
+                .setBody(message.body),
+            messageFuture::complete
         )
 
         val kafkaRecord = ProducerRecord<String, ByteArray>(kafkaStream.topic, kafkaStream.key, value)
         producer.send(kafkaRecord) { _, exception: Throwable? ->
+            val outMessage = messageFuture.get()
             if (exception == null) {
-                val msgText = "Message '${message.logId}' sent to Kafka"
+                val msgText = "Message '${outMessage.id.logId}' sent to Kafka"
                 LOGGER.info(msgText)
-                eventSender.onEvent(msgText, "Send message", message)
+                eventSender.onEvent(msgText, "Send message", outMessage)
             } else {
-                throw RuntimeException("Failed to send message '${message.logId}' to Kafka", exception)
+                throw RuntimeException("Failed to send message '${outMessage.id.logId}' to Kafka", exception)
             }
         }
+    }
+
+    private fun isKafkaAvailable(): Boolean = try {
+        consumer.listTopics(POLL_TIMEOUT)
+        true
+    } catch (e: TimeoutException) {
+        false
     }
 
     override fun run() = try {
@@ -81,7 +98,24 @@ class KafkaConnection(
 
         while (!Thread.currentThread().isInterrupted) {
             val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
-            if (records.isEmpty) continue
+
+            if (records.isEmpty) {
+                if (config.kafkaConnectionEvents && !isKafkaAvailable()) {
+                    val failedToConnectMessage = "Failed to connect Kafka"
+                    LOGGER.error(failedToConnectMessage)
+                    eventSender.onEvent(failedToConnectMessage, CONNECTIVITY_EVENT_TYPE, status = Event.Status.FAILED)
+
+                    while (!Thread.currentThread().isInterrupted && !isKafkaAvailable()) {
+                        /* wait for connection */
+                    }
+
+                    val connectionRestoredMessage = "Kafka connection restored"
+                    LOGGER.info(connectionRestoredMessage)
+                    eventSender.onEvent(connectionRestoredMessage, CONNECTIVITY_EVENT_TYPE)
+                }
+                continue
+            }
+
             LOGGER.trace { "Batch with ${records.count()} records polled from Kafka" }
 
             val topicsToSkip: MutableSet<String> = HashSet()
@@ -96,7 +130,7 @@ class KafkaConnection(
                     val msgText =
                         "Inactivity period exceeded ($inactivityPeriod ms). Skipping unread messages in '$topicToSkip' topic."
                     LOGGER.info { msgText }
-                    eventSender.onEvent(msgText, "ConnectivityServiceEvent")
+                    eventSender.onEvent(msgText, CONNECTIVITY_EVENT_TYPE)
                 } else {
                     if (record.topic() in topicsToSkip) continue
 
@@ -104,7 +138,7 @@ class KafkaConnection(
                         ?: config.topicAndKeyToAlias[KafkaStream(record.topic(), record.key(), true)]
                         ?: continue
 
-                    val messageID = MessageID.newBuilder()
+                    val messageID = factory.newMessageIDBuilder()
                         .setConnectionId(
                             ConnectionID.newBuilder()
                                 .setSessionAlias(alias)
@@ -127,6 +161,8 @@ class KafkaConnection(
                 }
             }
         }
+    } catch (e: InterruptedException) {
+        LOGGER.info("Polling thread interrupted")
     } catch (e: Exception) {
         val errorMessage = "Failed to read messages from Kafka"
         LOGGER.error(errorMessage, e)
@@ -143,6 +179,7 @@ class KafkaConnection(
     companion object {
         private val LOGGER = KotlinLogging.logger {}
         private val POLL_TIMEOUT = Duration.ofMillis(100L)
+        private const val CONNECTIVITY_EVENT_TYPE = "ConnectivityServiceEvent"
 
         fun createTopics(config: Config) {
             if (config.topicsToCreate.isEmpty()) return

@@ -96,6 +96,11 @@ class Config(
      */
     val reconnectBackoffMaxMs: Int = 1000,
 
+    /**
+     * Generate TH2 event on connect|disconnect Kafka
+     */
+    val kafkaConnectionEvents: Boolean = false,
+
     val createTopics: Boolean = false,
     val topicsToCreate: List<String> = emptyList(),
     val newTopicsPartitions: Int = 1,

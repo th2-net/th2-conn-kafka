@@ -46,7 +46,8 @@ jar {
 
 dependencies {
     api platform('com.exactpro.th2:bom:4.1.0')
-    implementation 'com.exactpro.th2:common:3.44.0'
+    implementation 'com.exactpro.th2:common:5.1.0-dev-version-5-4085018593-8adee33-SNAPSHOT'
+    implementation 'com.exactpro.th2:common-utils:0.0.1-book-and-page-3836172629-SNAPSHOT'
 
     implementation 'org.apache.kafka:kafka-clients:3.4.0'
 
