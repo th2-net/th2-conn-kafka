@@ -1,4 +1,4 @@
-# KafkaConnect (0.1.0)
+# KafkaConnect (0.1.1)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
@@ -100,9 +100,16 @@ spec:
 
 ## Release notes
 
+### 0.1.1
++ bump library versions
+
 ### 0.1.0
 
 + Migrated to Books & Pages concept
+
+### 0.0.4
++ th2-common upgrade to `3.44.1`
++ th2-bom upgrade to `4.2.0`
 
 ### 0.0.3
 
