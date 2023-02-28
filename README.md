@@ -1,4 +1,4 @@
-# KafkaConnect (0.1.0)
+# KafkaConnect (0.1.1)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
@@ -39,6 +39,8 @@ This configuration should be specified in the custom configuration block in sche
     timeSpanUnit : "MILLISECONDS"
     reconnectBackoffMs: 50
     reconnectBackoffMaxMs: 1000
+    kafkaBatchSize: 524288
+    kafkaLingerMillis: 200
     kafkaConnectionEvents: true
 ```
 
@@ -99,6 +101,10 @@ spec:
 ```
 
 ## Release notes
+
+### 0.1.1
+
++ Kafka batching settings
 
 ### 0.1.0
 
