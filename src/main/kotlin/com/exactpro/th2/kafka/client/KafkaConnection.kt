@@ -109,9 +109,11 @@ class KafkaConnection(
                         /* wait for connection */
                     }
 
-                    val connectionRestoredMessage = "Kafka connection restored"
-                    LOGGER.info(connectionRestoredMessage)
-                    eventSender.onEvent(connectionRestoredMessage, CONNECTIVITY_EVENT_TYPE)
+                    if (!Thread.currentThread().isInterrupted) {
+                        val connectionRestoredMessage = "Kafka connection restored"
+                        LOGGER.info(connectionRestoredMessage)
+                        eventSender.onEvent(connectionRestoredMessage, CONNECTIVITY_EVENT_TYPE)
+                    }
                 }
                 continue
             }

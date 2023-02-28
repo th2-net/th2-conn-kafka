@@ -87,6 +87,16 @@ class Config(
     val reconnectBackoffMs: Int = 50,
 
     /**
+     * Kafka producer batch size in bytes
+     */
+    val kafkaBatchSize: Int = 16384,
+
+    /**
+     * The upper bound on the delay for batching
+     */
+    val kafkaLingerMillis: Int = 20,
+
+    /**
      * The maximum amount of time in milliseconds to backoff/wait when reconnecting to a broker that
      * has repeatedly failed to connect. If provided, the backoff per host will increase
      * exponentially for each consecutive connection failure, up to this maximum.
