@@ -78,6 +78,7 @@ class KafkaConnection(
             if (exception == null) {
                 val msgText = "Message '${outMessage.id.logId}' sent to Kafka"
                 LOGGER.info(msgText)
+                eventSender.onEvent(msgText, "Send message", outMessage)
             } else {
                 throw RuntimeException("Failed to send message '${outMessage.id.logId}' to Kafka", exception)
             }

@@ -125,6 +125,7 @@ class KafkaConnectionTest {
         assertThat(kafkaRecord.topic()).isEqualTo("topic_01")
         assertThat(kafkaRecord.key()).isNull()
         assertThat(String(kafkaRecord.value())).isEqualTo(testMessageText)
+        verify(eventSender, only()).onEvent(any(), eq("Send message"), eq(outMessage), eq(null), eq(null), eq(null))
     }
 
     @Test
