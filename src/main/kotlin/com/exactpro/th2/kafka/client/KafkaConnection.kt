@@ -42,6 +42,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.HashSet
 import java.util.Collections
+import java.util.concurrent.CompletableFuture
 
 class KafkaConnection(
     private val config: Config,
@@ -57,12 +58,28 @@ class KafkaConnection(
         val alias = message.sessionAlias ?: error("Message '${message.id.logId}' does not contain session alias.")
         val kafkaStream = config.aliasToTopicAndKey[alias] ?: KafkaStream(config.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."), null)
         val value = message.body.toByteArray()
+        val messageIdBuilder = message.id.toBuilder().apply {
+            direction = Direction.SECOND
+            bookName = factory.boxConfiguration.bookName
+            setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup.getValue(alias)))
+        }
+
+        val messageFuture = CompletableFuture<RawMessage>()
+        messageProcessor.onMessage(
+            RawMessage.newBuilder()
+                .setMetadata(message.metadata.toBuilder().setId(messageIdBuilder))
+                .setBody(message.body),
+            messageFuture::complete
+        )
+
         val kafkaRecord = ProducerRecord<String, ByteArray>(kafkaStream.topic, kafkaStream.key, value)
         producer.send(kafkaRecord) { _, exception: Throwable? ->
+            val outMessage = messageFuture.get()
             if (exception == null) {
-                LOGGER.info("Message '${message.id.logId}' sent to Kafka")
+                val msgText = "Message '${outMessage.id.logId}' sent to Kafka"
+                LOGGER.info(msgText)
             } else {
-                throw RuntimeException("Failed to send message '${message.id.logId}' to Kafka", exception)
+                throw RuntimeException("Failed to send message '${outMessage.id.logId}' to Kafka", exception)
             }
         }
     }

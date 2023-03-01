@@ -35,7 +35,6 @@ import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.Disabled
 import kotlin.test.Test
 import org.mockito.kotlin.*
 import java.lang.IllegalStateException
@@ -94,7 +93,6 @@ class KafkaConnectionTest {
         kafkaClientsFactory
     )
 
-    @Disabled
     @Test
     fun `publish message`() {
         val testMessage = RawMessage.newBuilder()
@@ -127,7 +125,6 @@ class KafkaConnectionTest {
         assertThat(kafkaRecord.topic()).isEqualTo("topic_01")
         assertThat(kafkaRecord.key()).isNull()
         assertThat(String(kafkaRecord.value())).isEqualTo(testMessageText)
-        verify(eventSender, only()).onEvent(any(), eq("Send message"), eq(outMessage), eq(null), eq(null), eq(null))
     }
 
     @Test
