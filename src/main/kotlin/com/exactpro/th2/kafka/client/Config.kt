@@ -111,6 +111,11 @@ class Config(
      */
     val kafkaConnectionEvents: Boolean = false,
 
+    /**
+     * Generate TH2 event on successful message publishing
+     */
+    val messagePublishingEvents: Boolean = false,
+
     val createTopics: Boolean = false,
     val topicsToCreate: List<String> = emptyList(),
     val newTopicsPartitions: Int = 1,

@@ -42,6 +42,7 @@ This configuration should be specified in the custom configuration block in sche
     kafkaBatchSize: 524288
     kafkaLingerMillis: 200
     kafkaConnectionEvents: true
+    messagePublishingEvents: true
 ```
 
 Parameters:
@@ -66,6 +67,7 @@ Parameters:
 + reconnectBackoffMs - The amount of time in milliseconds to wait before attempting to reconnect to a given host. Should be positive.
 + reconnectBackoffMaxMs - The maximum amount of time in milliseconds to backoff/wait when reconnecting to a broker that has repeatedly failed to connect. If provided, the backoff per host will increase exponentially for each consecutive connection failure, up to this maximum. Once the maximum is reached, reconnection attempts will continue periodically with this fixed rate. To avoid connection storms, a randomization factor of 0.2 will be applied to the backoff resulting in a random range between 20% below and 20% above the computed value. Should be positive.
 + kafkaConnectionEvents - Generate TH2 events on lost connection and restore connection to Kafka. `false` by default.
++ messagePublishingEvents - Generate TH2 event on successful message publishing.
 
 ## Reconnect behaviour
 
@@ -105,6 +107,7 @@ spec:
 ### 0.1.1
 
 + Kafka batching settings
++ Message publishing events setting
 
 ### 0.1.0
 
