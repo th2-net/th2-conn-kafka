@@ -27,12 +27,13 @@ import com.exactpro.th2.common.message.logId
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.MessageRouter
-import com.exactpro.th2.kafka.client.utility.storeEvent
+import com.exactpro.th2.common.utils.event.EventBatcher
 import mu.KotlinLogging
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -117,8 +118,7 @@ class EventSender(private val eventRouter: MessageRouter<EventBatch>, private va
 
     private val batchSenderExecutor = Executors.newSingleThreadScheduledExecutor()
     private val eventBatcher = EventBatcher(
-        maxBatchSizeInBytes = 512 * 1024,
-        maxBatchSizeInItems = 2000,
+        maxBatchSize = 2000,
         maxFlushTime = 1000,
         executor = batchSenderExecutor,
         onBatch = {
