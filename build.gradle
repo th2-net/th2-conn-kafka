@@ -46,7 +46,7 @@ jar {
 
 dependencies {
     api platform('com.exactpro.th2:bom:4.2.0')
-    implementation 'com.exactpro.th2:common:5.2.0-dev'
+    implementation 'com.exactpro.th2:common:5.2.0-vulnerabilities-book-and-page-4290510364-9366b96-SNAPSHOT'
     implementation 'com.exactpro.th2:common-utils:2.0.0-dev'
 
     implementation 'org.apache.kafka:kafka-clients:3.4.0'
