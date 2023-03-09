@@ -68,6 +68,8 @@ Parameters:
 + reconnectBackoffMaxMs - The maximum amount of time in milliseconds to backoff/wait when reconnecting to a broker that has repeatedly failed to connect. If provided, the backoff per host will increase exponentially for each consecutive connection failure, up to this maximum. Once the maximum is reached, reconnection attempts will continue periodically with this fixed rate. To avoid connection storms, a randomization factor of 0.2 will be applied to the backoff resulting in a random range between 20% below and 20% above the computed value. Should be positive.
 + kafkaConnectionEvents - Generate TH2 events on lost connection and restore connection to Kafka. `false` by default.
 + messagePublishingEvents - Generate TH2 event on successful message publishing.
++ kafkaBatchSize - maximum number of bytes that will be included in a batch.
++ kafkaLingerMillis - number of milliseconds a producer is willing to wait before sending a batch out.
 + addExtraMetadata - Add extra metadata to messages (like topic, key. offset, original timestamp ...).
 + security.protocol - Protocol used to communicate with brokers.
 + sasl.kerberos.service.name - The Kerberos principal name that Kafka runs as.

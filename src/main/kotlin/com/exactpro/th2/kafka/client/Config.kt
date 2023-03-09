@@ -201,6 +201,8 @@ class Config(
         require(batchSize > 0) { "'batchSize' must be positive. Please, check the configuration. $batchSize" }
         require(maxInactivityPeriod > 0) { "'maxInactivityPeriod' must be positive. Please, check the configuration. $maxInactivityPeriod" }
         require(timeSpan > 0) { "'timeSpan' must be positive. Please, check the configuration. $timeSpan" }
+        require(kafkaBatchSize > 0) { "'kafkaBatchSize' must be positive. Please, check the configuration. $kafkaBatchSize" }
+        require(kafkaLingerMillis > 0) { "'kafkaLingerMillis' must be positive. Please, check the configuration. $kafkaLingerMillis" }
     }
 
     private fun <T> Sequence<T>.noDuplicates(): Boolean {
