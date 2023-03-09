@@ -76,7 +76,8 @@ class KafkaConnectionTest {
         Config(
             aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01"), "alias_02" to KafkaTopic("topic_02")),
             aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", "key_03", true)),
-            sessionGroups = mapOf("group_01" to listOf("alias_01"))
+            sessionGroups = mapOf("group_01" to listOf("alias_01")),
+            messagePublishingEvents = true
         ),
         messageProcessor,
         eventSender,

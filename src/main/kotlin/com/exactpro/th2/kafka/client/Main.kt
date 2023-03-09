@@ -113,7 +113,20 @@ fun main(args: Array<String>) {
     LOGGER.info { "Microservice shutted down." }
 }
 
-class EventSender(private val eventRouter: MessageRouter<EventBatch>, private val rootEventId: EventID) {
+class EventSender(private val eventRouter: MessageRouter<EventBatch>, private val rootEventId: EventID) : AutoCloseable {
+
+    private val batchSenderExecutor = Executors.newSingleThreadScheduledExecutor()
+    private val eventBatcher = EventBatcher(
+        maxBatchSizeInBytes = 512 * 1024,
+        maxBatchSizeInItems = 2000,
+        maxFlushTime = 1000,
+        executor = batchSenderExecutor,
+        onBatch = {
+            eventRouter.send(it)
+            LOGGER.debug { "EventBatch with ${it.eventsCount} events sent" }
+        }
+    )
+
     fun onEvent(
         name: String,
         type: String,
@@ -140,6 +153,12 @@ class EventSender(private val eventRouter: MessageRouter<EventBatch>, private va
             event.status(status)
         }
 
-        eventRouter.storeEvent(event, parentEventId ?: rootEventId)
+        eventBatcher.onEvent(event.toProto(parentEventId ?: rootEventId))
+    }
+
+    override fun close() {
+        eventBatcher.close()
+        batchSenderExecutor.shutdown()
+        batchSenderExecutor.awaitTermination(10, TimeUnit.SECONDS)
     }
 }

@@ -18,6 +18,8 @@ package com.exactpro.th2.kafka.client
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
+import org.apache.kafka.clients.CommonClientConfigs
+import org.apache.kafka.common.config.SaslConfigs
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.DurationUnit
@@ -87,6 +89,16 @@ class Config(
     val reconnectBackoffMs: Int = 50,
 
     /**
+     * Kafka producer batch size in bytes
+     */
+    val kafkaBatchSize: Int = 16384,
+
+    /**
+     * The upper bound on the delay for batching
+     */
+    val kafkaLingerMillis: Int = 20,
+
+    /**
      * The maximum amount of time in milliseconds to backoff/wait when reconnecting to a broker that
      * has repeatedly failed to connect. If provided, the backoff per host will increase
      * exponentially for each consecutive connection failure, up to this maximum.
@@ -100,6 +112,40 @@ class Config(
      * Generate TH2 event on connect|disconnect Kafka
      */
     val kafkaConnectionEvents: Boolean = false,
+
+    /**
+     * Generate TH2 event on successful message publishing
+     */
+    val messagePublishingEvents: Boolean = false,
+
+    /**
+     * Add extra metadata to messages (like topic, key. offset, original timestamp ...)
+     */
+    val addExtraMetadata: Boolean = false,
+
+    /**
+     * Protocol used to communicate with brokers
+     */
+    @JsonProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG)
+    val kafkaSecurityProtocol: String? = null,
+
+    /**
+     * The Kerberos principal name that Kafka runs as
+     */
+    @JsonProperty(SaslConfigs.SASL_KERBEROS_SERVICE_NAME)
+    val kafkaSaslKerberosServiceName: String? = null,
+
+    /**
+     * SASL mechanism used for client connections
+     */
+    @JsonProperty(SaslConfigs.SASL_MECHANISM)
+    val kafkaSaslMechanism: String? = null,
+
+    /**
+     * JAAS login context parameters for SASL connections in the format used by JAAS configuration files
+     */
+    @JsonProperty(SaslConfigs.SASL_JAAS_CONFIG)
+    val kafkaSaslJaasConfig: String? = null,
 
     val createTopics: Boolean = false,
     val topicsToCreate: List<String> = emptyList(),
@@ -155,6 +201,8 @@ class Config(
         require(batchSize > 0) { "'batchSize' must be positive. Please, check the configuration. $batchSize" }
         require(maxInactivityPeriod > 0) { "'maxInactivityPeriod' must be positive. Please, check the configuration. $maxInactivityPeriod" }
         require(timeSpan > 0) { "'timeSpan' must be positive. Please, check the configuration. $timeSpan" }
+        require(kafkaBatchSize > 0) { "'kafkaBatchSize' must be positive. Please, check the configuration. $kafkaBatchSize" }
+        require(kafkaLingerMillis > 0) { "'kafkaLingerMillis' must be positive. Please, check the configuration. $kafkaLingerMillis" }
     }
 
     private fun <T> Sequence<T>.noDuplicates(): Boolean {
