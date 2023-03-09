@@ -150,8 +150,22 @@ class KafkaConnection(
                         )
                         .setDirection(Direction.FIRST)
 
+                    val metadata = RawMessageMetadata.newBuilder().setId(messageID)
+
+                    if (config.addExtraMetadata) {
+                        metadata.putProperties(METADATA_TOPIC, record.topic())
+                        if (record.key() !== null) metadata.putProperties(METADATA_KEY, record.key())
+                        metadata.putProperties(METADATA_PARTITION, record.partition().toString())
+                        metadata.putProperties(METADATA_OFFSET, record.offset().toString())
+                        metadata.putProperties(METADATA_TIMESTAMP, record.timestamp().toString())
+                        if (record.timestampType() !== null) metadata.putProperties(
+                            METADATA_TIMESTAMP_TYPE,
+                            record.timestampType().toString()
+                        )
+                    }
+
                     messageProcessor.onMessage(RawMessage.newBuilder()
-                        .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
+                        .setMetadata(metadata)
                         .setBody(UnsafeByteOperations.unsafeWrap(record.value()))
                     )
                 }
@@ -184,6 +198,13 @@ class KafkaConnection(
         private val LOGGER = KotlinLogging.logger {}
         private val POLL_TIMEOUT = Duration.ofMillis(100L)
         private const val CONNECTIVITY_EVENT_TYPE = "ConnectivityServiceEvent"
+
+        private const val METADATA_TOPIC = "topic"
+        private const val METADATA_KEY = "key"
+        private const val METADATA_PARTITION = "partition"
+        private const val METADATA_OFFSET = "offset"
+        private const val METADATA_TIMESTAMP = "timestamp"
+        private const val METADATA_TIMESTAMP_TYPE = "timestampType"
 
         fun createTopics(config: Config) {
             if (config.topicsToCreate.isEmpty()) return

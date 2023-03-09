@@ -16,12 +16,14 @@
 
 package com.exactpro.th2.kafka.client
 
+import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.consumer.Consumer
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerConfig
+import org.apache.kafka.common.config.SaslConfigs
 import org.apache.kafka.common.serialization.ByteArrayDeserializer
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.apache.kafka.common.serialization.StringDeserializer
@@ -31,7 +33,7 @@ import java.util.Properties
 class KafkaClientsFactory(private val config: Config) {
     fun getKafkaConsumer(): Consumer<String, ByteArray> = KafkaConsumer(
         Properties().apply {
-            putAll(mapOf(
+            val props = mutableMapOf(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to config.bootstrapServers,
                 ConsumerConfig.GROUP_ID_CONFIG to config.groupId,
                 ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to false,
@@ -39,13 +41,20 @@ class KafkaClientsFactory(private val config: Config) {
                 ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to ByteArrayDeserializer::class.java,
                 ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG to config.reconnectBackoffMs,
                 ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG to config.reconnectBackoffMaxMs,
-            ))
+
+                CommonClientConfigs.SECURITY_PROTOCOL_CONFIG to config.kafkaSecurityProtocol,
+                SaslConfigs.SASL_KERBEROS_SERVICE_NAME to config.kafkaSaslKerberosServiceName,
+                SaslConfigs.SASL_MECHANISM to config.kafkaSaslMechanism,
+                SaslConfigs.SASL_JAAS_CONFIG to config.kafkaSaslJaasConfig
+            )
+            props.values.removeIf { it === null }
+            putAll(props)
         }
     )
 
     fun getKafkaProducer(): Producer<String, ByteArray> = KafkaProducer(
         Properties().apply {
-            putAll(mapOf(
+            val props = mutableMapOf(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to config.bootstrapServers,
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
                 ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to ByteArraySerializer::class.java,
@@ -53,7 +62,14 @@ class KafkaClientsFactory(private val config: Config) {
                 ProducerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG to config.reconnectBackoffMaxMs,
                 ProducerConfig.BATCH_SIZE_CONFIG to config.kafkaBatchSize,
                 ProducerConfig.LINGER_MS_CONFIG to config.kafkaLingerMillis,
-            ))
+
+                CommonClientConfigs.SECURITY_PROTOCOL_CONFIG to config.kafkaSecurityProtocol,
+                SaslConfigs.SASL_KERBEROS_SERVICE_NAME to config.kafkaSaslKerberosServiceName,
+                SaslConfigs.SASL_MECHANISM to config.kafkaSaslMechanism,
+                SaslConfigs.SASL_JAAS_CONFIG to config.kafkaSaslJaasConfig
+            )
+            props.values.removeIf { it === null }
+            putAll(props)
         }
     )
 }

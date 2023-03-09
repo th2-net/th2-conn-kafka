@@ -18,6 +18,8 @@ package com.exactpro.th2.kafka.client
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
+import org.apache.kafka.clients.CommonClientConfigs
+import org.apache.kafka.common.config.SaslConfigs
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.DurationUnit
@@ -115,6 +117,35 @@ class Config(
      * Generate TH2 event on successful message publishing
      */
     val messagePublishingEvents: Boolean = false,
+
+    /**
+     * Add extra metadata to messages (like topic, key. offset, original timestamp ...)
+     */
+    val addExtraMetadata: Boolean = false,
+
+    /**
+     * Protocol used to communicate with brokers
+     */
+    @JsonProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG)
+    val kafkaSecurityProtocol: String? = null,
+
+    /**
+     * The Kerberos principal name that Kafka runs as
+     */
+    @JsonProperty(SaslConfigs.SASL_KERBEROS_SERVICE_NAME)
+    val kafkaSaslKerberosServiceName: String? = null,
+
+    /**
+     * SASL mechanism used for client connections
+     */
+    @JsonProperty(SaslConfigs.SASL_MECHANISM)
+    val kafkaSaslMechanism: String? = null,
+
+    /**
+     * JAAS login context parameters for SASL connections in the format used by JAAS configuration files
+     */
+    @JsonProperty(SaslConfigs.SASL_JAAS_CONFIG)
+    val kafkaSaslJaasConfig: String? = null,
 
     val createTopics: Boolean = false,
     val topicsToCreate: List<String> = emptyList(),

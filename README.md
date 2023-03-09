@@ -68,6 +68,11 @@ Parameters:
 + reconnectBackoffMaxMs - The maximum amount of time in milliseconds to backoff/wait when reconnecting to a broker that has repeatedly failed to connect. If provided, the backoff per host will increase exponentially for each consecutive connection failure, up to this maximum. Once the maximum is reached, reconnection attempts will continue periodically with this fixed rate. To avoid connection storms, a randomization factor of 0.2 will be applied to the backoff resulting in a random range between 20% below and 20% above the computed value. Should be positive.
 + kafkaConnectionEvents - Generate TH2 events on lost connection and restore connection to Kafka. `false` by default.
 + messagePublishingEvents - Generate TH2 event on successful message publishing.
++ addExtraMetadata - Add extra metadata to messages (like topic, key. offset, original timestamp ...).
++ security.protocol - Protocol used to communicate with brokers.
++ sasl.kerberos.service.name - The Kerberos principal name that Kafka runs as.
++ sasl.mechanism - SASL mechanism used for client connections.
++ sasl.jaas.config - JAAS login context parameters for SASL connections in the format used by JAAS configuration files.
 
 ## Reconnect behaviour
 
@@ -85,7 +90,7 @@ Example of pins configuration:
 ```yaml
 spec:
   imageName: ghcr.io/th2-net/th2-conn-kafka
-  imageVersion: 0.0.3
+  imageVersion: 0.1.1
   type: th2-conn
 
   pins:
@@ -106,8 +111,10 @@ spec:
 
 ### 0.1.1
 
++ Secure connection support
 + Kafka batching settings
-+ Message publishing events setting
++ Message events publishing setting
++ Added extra metadata to messages received from Kafka
 
 ### 0.1.0
 
