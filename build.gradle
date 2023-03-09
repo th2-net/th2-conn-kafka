@@ -4,7 +4,7 @@ plugins {
     id 'application'
     id 'com.palantir.docker' version '0.25.0'
     id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
-    id "org.owasp.dependencycheck" version "7.4.4"
+    id "org.owasp.dependencycheck" version "8.1.2"
 }
 
 group 'com.exactpro.th2'
@@ -46,8 +46,8 @@ jar {
 
 dependencies {
     api platform('com.exactpro.th2:bom:4.2.0')
-    implementation 'com.exactpro.th2:common:5.1.0-dev-version-5-4201556161-176471c-SNAPSHOT'
-    implementation 'com.exactpro.th2:common-utils:0.0.1-book-and-page-3836172629-SNAPSHOT'
+    implementation 'com.exactpro.th2:common:5.2.0-dev'
+    implementation 'com.exactpro.th2:common-utils:2.0.0-dev'
 
     implementation 'org.apache.kafka:kafka-clients:3.4.0'
 
@@ -84,5 +84,18 @@ tasks.withType(KotlinCompile).configureEach {
 }
 
 dependencyCheck {
-    formats=['SARIF']
+    formats=['SARIF', 'JSON', 'HTML']
+    failBuildOnCVSS=5
+
+    analyzers {
+        assemblyEnabled = false
+        nugetconfEnabled = false
+        nodeEnabled = false
+    }
+}
+
+configurations {
+    compileClasspath {
+        resolutionStrategy.activateDependencyLocking()
+    }
 }

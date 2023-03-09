@@ -120,6 +120,10 @@ spec:
 
 + Migrated to Books & Pages concept
 
+### 0.0.4
++ th2-common upgrade to `3.44.1`
++ th2-bom upgrade to `4.2.0`
+
 ### 0.0.3
 
 + Publishing to Kafka support
