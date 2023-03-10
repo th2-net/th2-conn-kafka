@@ -79,7 +79,22 @@ class Config(
     val timeSpan: Long = 1000L,
 
     /**
-     * The unit of time which applies to the `timeSpan` argument
+     * The maximum size of one event batch in bytes
+     */
+    val eventBatchMaxBytes: Long = 512 * 1024,
+
+    /**
+     * The maximum size of one event batch in events
+     */
+    val eventBatchMaxEvents: Int = 2000,
+
+    /**
+     * The period event router collects messages before it should be sent
+     */
+    val eventBatchTimeSpan: Long = 1000L,
+
+    /**
+     * The unit of time which applies to the `timeSpan` and 'eventBatchTimeSpan' argument
      */
     val timeSpanUnit: TimeUnit = TimeUnit.MILLISECONDS,
 
@@ -201,8 +216,23 @@ class Config(
         require(batchSize > 0) { "'batchSize' must be positive. Please, check the configuration. $batchSize" }
         require(maxInactivityPeriod > 0) { "'maxInactivityPeriod' must be positive. Please, check the configuration. $maxInactivityPeriod" }
         require(timeSpan > 0) { "'timeSpan' must be positive. Please, check the configuration. $timeSpan" }
+        require(eventBatchMaxBytes > 0) { "'eventBatchMaxBytes' must be positive. Please, check the configuration. $eventBatchMaxBytes" }
+        require(eventBatchMaxEvents > 0) { "'eventBatchMaxEvents' must be positive. Please, check the configuration. $eventBatchMaxEvents" }
+        require(eventBatchTimeSpan > 0) { "'eventBatchTimeSpan' must be positive. Please, check the configuration. $eventBatchTimeSpan" }
         require(kafkaBatchSize > 0) { "'kafkaBatchSize' must be positive. Please, check the configuration. $kafkaBatchSize" }
         require(kafkaLingerMillis > 0) { "'kafkaLingerMillis' must be positive. Please, check the configuration. $kafkaLingerMillis" }
+
+        if (kafkaSecurityProtocol === null || kafkaSecurityProtocol == CommonClientConfigs.DEFAULT_SECURITY_PROTOCOL) {
+            val errMsg =" should be null if kafkaSecurityProtocol is null or '${CommonClientConfigs.DEFAULT_SECURITY_PROTOCOL}'. Please, check the configuration."
+            require(kafkaSaslKerberosServiceName === null) { "'kafkaSaslKerberosServiceName'$errMsg" }
+            require(kafkaSaslMechanism === null) { "'kafkaSaslMechanism'$errMsg" }
+            require(kafkaSaslJaasConfig === null) { "'kafkaSaslJaasConfig'$errMsg" }
+        } else {
+            val errMsg =" should not be null. Please, check the configuration."
+            requireNotNull(kafkaSaslKerberosServiceName) { "'kafkaSaslKerberosServiceName'$errMsg" }
+            requireNotNull(kafkaSaslMechanism) { "'kafkaSaslMechanism'$errMsg" }
+            requireNotNull(kafkaSaslJaasConfig) { "'kafkaSaslJaasConfig'$errMsg" }
+        }
     }
 
     private fun <T> Sequence<T>.noDuplicates(): Boolean {

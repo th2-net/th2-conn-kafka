@@ -62,8 +62,11 @@ Parameters:
   + MICROSECONDS
   + NANOSECONDS
 + batchSize - the size of one batch (number of messages). Should be positive.
-+ timeSpan - The period router collects messages before it should be sent. Should be positive.
-+ timeSpanUnit time unit for `timeSpan`
++ timeSpan - the period router collects messages to batch before it should be sent. Should be positive.
++ eventBatchMaxBytes - the size of one event batch (number of bytes). Should be positive.
++ eventBatchMaxEvents - the size of one event batch (number of events). Should be positive.
++ eventBatchTimeSpan - the period router collects events to batch before it should be sent. Should be positive.
++ timeSpanUnit time unit for `timeSpan` and `eventBatchTimeSpan`.
 + reconnectBackoffMs - The amount of time in milliseconds to wait before attempting to reconnect to a given host. Should be positive.
 + reconnectBackoffMaxMs - The maximum amount of time in milliseconds to backoff/wait when reconnecting to a broker that has repeatedly failed to connect. If provided, the backoff per host will increase exponentially for each consecutive connection failure, up to this maximum. Once the maximum is reached, reconnection attempts will continue periodically with this fixed rate. To avoid connection storms, a randomization factor of 0.2 will be applied to the backoff resulting in a random range between 20% below and 20% above the computed value. Should be positive.
 + kafkaConnectionEvents - Generate TH2 events on lost connection and restore connection to Kafka. `false` by default.
