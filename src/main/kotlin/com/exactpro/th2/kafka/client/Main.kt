@@ -71,7 +71,7 @@ fun main(args: Array<String>) {
                 }
         }.apply { resources += "message processor" to ::close }
 
-        val eventSender = EventSender(factory.eventBatchRouter, EventID.newBuilder().setId(factory.rootEventId).build())
+        val eventSender = EventSender(factory.eventBatchRouter, EventID.newBuilder().setId(factory.rootEventId).build(), config)
 
         if (config.createTopics) KafkaConnection.createTopics(config)
         val connection = KafkaConnection(config, messageProcessor, eventSender, KafkaClientsFactory(config))
@@ -114,12 +114,15 @@ fun main(args: Array<String>) {
     LOGGER.info { "Microservice shutted down." }
 }
 
-class EventSender(private val eventRouter: MessageRouter<EventBatch>, private val rootEventId: EventID) : AutoCloseable {
-
+class EventSender(
+    private val eventRouter: MessageRouter<EventBatch>,
+    private val rootEventId: EventID,
+    config: Config
+) : AutoCloseable {
     private val batchSenderExecutor = Executors.newSingleThreadScheduledExecutor()
     private val eventBatcher = EventBatcher(
-        maxBatchSize = 2000,
-        maxFlushTime = 1000,
+        maxBatchSize = config.eventBatchMaxEvents,
+        maxFlushTime = config.timeSpanUnit.toMillis(config.eventBatchTimeSpan),
         executor = batchSenderExecutor,
         onBatch = {
             eventRouter.send(it)

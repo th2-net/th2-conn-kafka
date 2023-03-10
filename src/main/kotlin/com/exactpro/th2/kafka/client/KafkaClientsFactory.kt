@@ -33,43 +33,37 @@ import java.util.Properties
 class KafkaClientsFactory(private val config: Config) {
     fun getKafkaConsumer(): Consumer<String, ByteArray> = KafkaConsumer(
         Properties().apply {
-            val props = mutableMapOf(
-                ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to config.bootstrapServers,
-                ConsumerConfig.GROUP_ID_CONFIG to config.groupId,
-                ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to false,
-                ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
-                ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to ByteArrayDeserializer::class.java,
-                ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG to config.reconnectBackoffMs,
-                ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG to config.reconnectBackoffMaxMs,
-
-                CommonClientConfigs.SECURITY_PROTOCOL_CONFIG to config.kafkaSecurityProtocol,
-                SaslConfigs.SASL_KERBEROS_SERVICE_NAME to config.kafkaSaslKerberosServiceName,
-                SaslConfigs.SASL_MECHANISM to config.kafkaSaslMechanism,
-                SaslConfigs.SASL_JAAS_CONFIG to config.kafkaSaslJaasConfig
-            )
-            props.values.removeIf { it === null }
-            putAll(props)
+            put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, config.bootstrapServers)
+            put(ConsumerConfig.GROUP_ID_CONFIG, config.groupId)
+            put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false)
+            put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer::class.java)
+            put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer::class.java)
+            put(ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG, config.reconnectBackoffMs)
+            put(ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, config.reconnectBackoffMaxMs)
+            addSecuritySettings()
         }
     )
 
     fun getKafkaProducer(): Producer<String, ByteArray> = KafkaProducer(
         Properties().apply {
-            val props = mutableMapOf(
-                ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to config.bootstrapServers,
-                ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
-                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to ByteArraySerializer::class.java,
-                ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG to config.reconnectBackoffMs,
-                ProducerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG to config.reconnectBackoffMaxMs,
-                ProducerConfig.BATCH_SIZE_CONFIG to config.kafkaBatchSize,
-                ProducerConfig.LINGER_MS_CONFIG to config.kafkaLingerMillis,
-
-                CommonClientConfigs.SECURITY_PROTOCOL_CONFIG to config.kafkaSecurityProtocol,
-                SaslConfigs.SASL_KERBEROS_SERVICE_NAME to config.kafkaSaslKerberosServiceName,
-                SaslConfigs.SASL_MECHANISM to config.kafkaSaslMechanism,
-                SaslConfigs.SASL_JAAS_CONFIG to config.kafkaSaslJaasConfig
-            )
-            props.values.removeIf { it === null }
-            putAll(props)
+            put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, config.bootstrapServers)
+            put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer::class.java)
+            put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer::class.java)
+            put(ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG, config.reconnectBackoffMs)
+            put(ProducerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, config.reconnectBackoffMaxMs)
+            put(ProducerConfig.BATCH_SIZE_CONFIG, config.kafkaBatchSize)
+            put(ProducerConfig.LINGER_MS_CONFIG, config.kafkaLingerMillis)
+            addSecuritySettings()
         }
     )
+
+    private fun Properties.addSecuritySettings() {
+        val securityProtocol = config.kafkaSecurityProtocol
+        if (securityProtocol !== null && securityProtocol != CommonClientConfigs.DEFAULT_SECURITY_PROTOCOL) {
+            put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol)
+            put(SaslConfigs.SASL_KERBEROS_SERVICE_NAME, config.kafkaSaslKerberosServiceName)
+            put(SaslConfigs.SASL_MECHANISM, config.kafkaSaslMechanism)
+            put(SaslConfigs.SASL_JAAS_CONFIG, config.kafkaSaslJaasConfig)
+        }
+    }
 }

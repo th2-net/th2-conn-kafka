@@ -196,12 +196,12 @@ class KafkaConnection(
         private val POLL_TIMEOUT = Duration.ofMillis(100L)
         private const val CONNECTIVITY_EVENT_TYPE = "ConnectivityServiceEvent"
 
-        private const val METADATA_TOPIC = "topic"
-        private const val METADATA_KEY = "key"
-        private const val METADATA_PARTITION = "partition"
-        private const val METADATA_OFFSET = "offset"
-        private const val METADATA_TIMESTAMP = "timestamp"
-        private const val METADATA_TIMESTAMP_TYPE = "timestampType"
+        private const val METADATA_TOPIC = "th2.kafka.topic"
+        private const val METADATA_KEY = "th2.kafka.key"
+        private const val METADATA_PARTITION = "th2.kafka.partition"
+        private const val METADATA_OFFSET = "th2.kafka.offset"
+        private const val METADATA_TIMESTAMP = "th2.kafka.timestamp"
+        private const val METADATA_TIMESTAMP_TYPE = "th2.kafka.timestampType"
 
         fun createTopics(config: Config) {
             if (config.topicsToCreate.isEmpty()) return
