@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.common.config.SaslConfigs
+import org.apache.kafka.common.config.SslConfigs
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.DurationUnit
@@ -143,6 +144,18 @@ class Config(
      */
     @JsonProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG)
     val kafkaSecurityProtocol: String? = null,
+
+    /**
+     * The location of the trust store file
+     */
+    @JsonProperty(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG)
+    val kafkaSecurityTruststoreLocation: String? = null,
+
+    /**
+     * The password for the trust store file
+     */
+    @JsonProperty(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG)
+    val kafkaSecurityTruststorePassword: String? = null,
 
     /**
      * The Kerberos principal name that Kafka runs as
