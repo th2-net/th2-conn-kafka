@@ -51,6 +51,7 @@ class KafkaConnection(
 ) : Runnable, Closeable {
     private val consumer: Consumer<String, ByteArray> = kafkaClientsFactory.getKafkaConsumer()
     private val producer: Producer<String, ByteArray> = kafkaClientsFactory.getKafkaProducer()
+    private val pollTimeout = Duration.ofMillis(config.kafkaPollTimeoutMs)
 
     fun publish(message: RawMessage) {
         val alias = message.sessionAlias
@@ -85,7 +86,7 @@ class KafkaConnection(
     }
 
     private fun isKafkaAvailable(): Boolean = try {
-        consumer.listTopics(POLL_TIMEOUT)
+        consumer.listTopics(pollTimeout)
         true
     } catch (e: TimeoutException) {
         false
@@ -96,7 +97,7 @@ class KafkaConnection(
         consumer.subscribe(config.topicToAlias.keys + config.topicAndKeyToAlias.map { it.key.topic })
 
         while (!Thread.currentThread().isInterrupted) {
-            val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
+            val records: ConsumerRecords<String?, ByteArray> = consumer.poll(pollTimeout)
 
             if (records.isEmpty) {
                 if (config.kafkaConnectionEvents && !isKafkaAvailable()) {
@@ -193,7 +194,6 @@ class KafkaConnection(
 
     companion object {
         private val LOGGER = KotlinLogging.logger {}
-        private val POLL_TIMEOUT = Duration.ofMillis(100L)
         private const val CONNECTIVITY_EVENT_TYPE = "ConnectivityServiceEvent"
 
         private const val METADATA_TOPIC = "th2.kafka.topic"

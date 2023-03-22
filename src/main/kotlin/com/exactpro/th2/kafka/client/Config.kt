@@ -125,6 +125,11 @@ class Config(
     val reconnectBackoffMaxMs: Int = 1000,
 
     /**
+     * Kafka poll request timeout
+     */
+    val kafkaPollTimeoutMs: Long = 1000,
+
+    /**
      * Generate TH2 event on connect|disconnect Kafka
      */
     val kafkaConnectionEvents: Boolean = false,
@@ -226,6 +231,7 @@ class Config(
 
         require(reconnectBackoffMaxMs > 0) { "'reconnectBackoffMaxMs' must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
         require(reconnectBackoffMs > 0) { "'reconnectBackoffMs' must be positive. Please, check the configuration. $reconnectBackoffMs" }
+        require(kafkaPollTimeoutMs > 0) { "'kafkaPollTimeoutMs' must be positive. Please, check the configuration. $kafkaPollTimeoutMs" }
         require(batchSize > 0) { "'batchSize' must be positive. Please, check the configuration. $batchSize" }
         require(maxInactivityPeriod > 0) { "'maxInactivityPeriod' must be positive. Please, check the configuration. $maxInactivityPeriod" }
         require(timeSpan > 0) { "'timeSpan' must be positive. Please, check the configuration. $timeSpan" }
