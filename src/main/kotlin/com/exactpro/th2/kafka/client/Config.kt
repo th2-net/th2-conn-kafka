@@ -19,6 +19,7 @@ package com.exactpro.th2.kafka.client
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.apache.kafka.clients.CommonClientConfigs
+import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.common.config.SaslConfigs
 import org.apache.kafka.common.config.SslConfigs
 import java.util.concurrent.TimeUnit
@@ -143,6 +144,12 @@ class Config(
      * Add extra metadata to messages (like topic, key. offset, original timestamp ...)
      */
     val addExtraMetadata: Boolean = false,
+
+    /**
+     * Auto offset reset policy. Possible values: "latest" (default), "earliest"
+     */
+    @JsonProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG)
+    val kafkaAutoOffsetReset: String = "latest",
 
     /**
      * Protocol used to communicate with brokers

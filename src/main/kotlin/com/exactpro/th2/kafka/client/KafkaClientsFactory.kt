@@ -41,6 +41,7 @@ class KafkaClientsFactory(private val config: Config) {
             put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer::class.java)
             put(ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG, config.reconnectBackoffMs)
             put(ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, config.reconnectBackoffMaxMs)
+            put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, config.kafkaAutoOffsetReset)
             addSecuritySettings()
         }
     )
