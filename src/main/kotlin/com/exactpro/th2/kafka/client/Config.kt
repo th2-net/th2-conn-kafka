@@ -193,7 +193,7 @@ class Config(
     val newTopicsReplicationFactor: Short = 1
 ) {
     @JsonIgnore
-    val maxInactivityPeriod: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)
+    val maxInactivityPeriodDuration: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)
 
     @JsonIgnore
     val topicToAlias: Map<String, String> = aliasToTopic.asSequence()

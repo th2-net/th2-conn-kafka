@@ -123,7 +123,7 @@ class KafkaConnection(
             val topicsToSkip: MutableSet<String> = HashSet()
             for (record in records) {
                 val inactivityPeriod = startTimestamp - record.timestamp()
-                if (inactivityPeriod > config.maxInactivityPeriod.inWholeMilliseconds) {
+                if (inactivityPeriod > config.maxInactivityPeriodDuration.inWholeMilliseconds) {
                     val topicToSkip = record.topic()
                     topicsToSkip.add(topicToSkip)
                     consumer.seekToEnd(
