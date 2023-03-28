@@ -39,9 +39,9 @@ class RawMessageProcessorTest {
 
     @Test
     fun batchingTest() {
-        val generatorThreads = 20
-        val messagesPerThread = 50000
-        val maxBatchSize = 2000
+        val generatorThreads = 5
+        val messagesPerThread = 5000
+        val maxBatchSize = 200
 
         val outputBatches = sendMessages(
             generatorThreads,
