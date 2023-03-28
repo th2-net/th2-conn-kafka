@@ -94,7 +94,40 @@ class KafkaConnection(
 
     override fun run() = try {
         val startTimestamp = Instant.now().toEpochMilli()
-        consumer.subscribe(config.topicToAlias.keys + config.topicAndKeyToAlias.map { it.key.topic })
+        val topics = config.topicToAlias.keys + config.topicAndKeyToAlias.map { it.key.topic }
+        consumer.subscribe(topics)
+
+        if (config.offsetResetOnStart != ResetOffset.NONE) {
+            val partitions = topics.asSequence()
+                .flatMap { consumer.partitionsFor(it, pollTimeout) }
+                .map { TopicPartition(it.topic(), it.partition()) }
+                .toList()
+
+            when (config.offsetResetOnStart) {
+                ResetOffset.BEGIN -> consumer.seekToBeginning(partitions)
+                ResetOffset.END -> consumer.seekToEnd(partitions)
+                ResetOffset.MESSAGE -> {
+                    if (config.offsetResetMessage >= 0) {
+                        partitions.forEach { consumer.seek(it, config.offsetResetMessage) }
+                    } else {
+                        consumer.endOffsets(partitions)
+                            .forEach { consumer.seek(it.key, it.value + config.offsetResetMessage) }
+                    }
+                }
+                ResetOffset.TIME -> {
+                    val time = if (config.offsetResetTimeMs >= 0) {
+                        config.offsetResetTimeMs
+                    } else {
+                        System.currentTimeMillis() + config.offsetResetTimeMs
+                    }
+
+                    consumer.offsetsForTimes(partitions.associateWith { time }, pollTimeout).forEach {
+                        consumer.seek(it.key, it.value.offset())
+                    }
+                }
+                else -> error("Wrong 'offsetResetOnStart' value")
+            }
+        }
 
         while (!Thread.currentThread().isInterrupted) {
             val records: ConsumerRecords<String?, ByteArray> = consumer.poll(pollTimeout)

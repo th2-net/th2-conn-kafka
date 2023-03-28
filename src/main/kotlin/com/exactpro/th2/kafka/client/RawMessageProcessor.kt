@@ -5,6 +5,7 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.logId
+import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.message.toTimestamp
 import mu.KotlinLogging
@@ -32,8 +33,7 @@ class RawMessageProcessor(
     private val batchFlusherExecutor = Executors.newSingleThreadScheduledExecutor()
 
     private val messageReceiverThread = thread(name = "message-receiver") {
-        val firstSequence: () -> Long = createSequence()
-        val secondSequence: () -> Long = createSequence()
+        val counters: MutableMap<Pair<String, Direction>, () -> Long> = HashMap()
         val builders: MutableMap<String, BatchHolder> = HashMap()
 
         while (true) {
@@ -44,8 +44,12 @@ class RawMessageProcessor(
             messageBuilder.metadataBuilder.apply {
                 timestamp = Instant.now().toTimestamp()
                 idBuilder.sequence = when (messageBuilder.direction) {
-                    Direction.FIRST -> firstSequence()
-                    Direction.SECOND -> secondSequence()
+                    Direction.FIRST, Direction.SECOND -> {
+                        val counter = counters.getOrPut(messageBuilder.sessionAlias to messageBuilder.direction) {
+                            createSequence()
+                        }
+                        counter()
+                    }
                     else -> error("Unrecognized direction")
                 }
             }
@@ -73,8 +77,8 @@ class RawMessageProcessor(
             batchBuilder.addMessages(message)
             LOGGER.trace { "Message ${message.logId} added to batch." }
             when (batchBuilder.messagesCount) {
-                1 -> flusherFuture = batchFlusherExecutor.schedule(::enqueueBatch, maxFlushTime, maxFlushTimeUnit)
                 maxBatchSize -> enqueueBatch()
+                1 -> flusherFuture = batchFlusherExecutor.schedule(::enqueueBatch, maxFlushTime, maxFlushTimeUnit)
             }
         }
 

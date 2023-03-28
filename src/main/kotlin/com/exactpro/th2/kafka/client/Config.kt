@@ -151,6 +151,10 @@ class Config(
     @JsonProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG)
     val kafkaAutoOffsetReset: String = "latest",
 
+    val offsetResetOnStart: ResetOffset = ResetOffset.NONE,
+    val offsetResetTimeMs: Long = 0,
+    val offsetResetMessage: Long = 0,
+
     /**
      * Protocol used to communicate with brokers
      */
@@ -277,3 +281,11 @@ data class KafkaStream(
     @JsonProperty(required = true) val key: String?,
     @JsonProperty(defaultValue = "false") val subscribe: Boolean = false
 )
+
+enum class ResetOffset {
+    NONE,
+    BEGIN,
+    END,
+    TIME,
+    MESSAGE
+}
