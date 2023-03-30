@@ -24,6 +24,7 @@ import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.config.SaslConfigs
+import org.apache.kafka.common.config.SslConfigs
 import org.apache.kafka.common.serialization.ByteArrayDeserializer
 import org.apache.kafka.common.serialization.ByteArraySerializer
 import org.apache.kafka.common.serialization.StringDeserializer
@@ -40,6 +41,7 @@ class KafkaClientsFactory(private val config: Config) {
             put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer::class.java)
             put(ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG, config.reconnectBackoffMs)
             put(ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, config.reconnectBackoffMaxMs)
+            put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, config.kafkaAutoOffsetReset)
             addSecuritySettings()
         }
     )
@@ -64,6 +66,13 @@ class KafkaClientsFactory(private val config: Config) {
             put(SaslConfigs.SASL_KERBEROS_SERVICE_NAME, config.kafkaSaslKerberosServiceName)
             put(SaslConfigs.SASL_MECHANISM, config.kafkaSaslMechanism)
             put(SaslConfigs.SASL_JAAS_CONFIG, config.kafkaSaslJaasConfig)
+        }
+
+        if (config.kafkaSecurityTruststoreLocation !== null) {
+            put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, config.kafkaSecurityTruststoreLocation)
+            if (config.kafkaSecurityTruststorePassword !== null) {
+                put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, config.kafkaSecurityTruststorePassword)
+            }
         }
     }
 }

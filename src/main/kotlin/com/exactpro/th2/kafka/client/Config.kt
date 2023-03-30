@@ -19,7 +19,9 @@ package com.exactpro.th2.kafka.client
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.apache.kafka.clients.CommonClientConfigs
+import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.common.config.SaslConfigs
+import org.apache.kafka.common.config.SslConfigs
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.DurationUnit
@@ -124,6 +126,11 @@ class Config(
     val reconnectBackoffMaxMs: Int = 1000,
 
     /**
+     * Kafka poll request timeout
+     */
+    val kafkaPollTimeoutMs: Long = 1000,
+
+    /**
      * Generate TH2 event on connect|disconnect Kafka
      */
     val kafkaConnectionEvents: Boolean = false,
@@ -139,10 +146,32 @@ class Config(
     val addExtraMetadata: Boolean = false,
 
     /**
+     * Auto offset reset policy. Possible values: "latest" (default), "earliest"
+     */
+    @JsonProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG)
+    val kafkaAutoOffsetReset: String = "latest",
+
+    val offsetResetOnStart: ResetOffset = ResetOffset.NONE,
+    val offsetResetTimeMs: Long = 0,
+    val offsetResetMessage: Long = 0,
+
+    /**
      * Protocol used to communicate with brokers
      */
     @JsonProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG)
     val kafkaSecurityProtocol: String? = null,
+
+    /**
+     * The location of the trust store file
+     */
+    @JsonProperty(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG)
+    val kafkaSecurityTruststoreLocation: String? = null,
+
+    /**
+     * The password for the trust store file
+     */
+    @JsonProperty(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG)
+    val kafkaSecurityTruststorePassword: String? = null,
 
     /**
      * The Kerberos principal name that Kafka runs as
@@ -168,7 +197,7 @@ class Config(
     val newTopicsReplicationFactor: Short = 1
 ) {
     @JsonIgnore
-    val maxInactivityPeriod: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)
+    val maxInactivityPeriodDuration: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)
 
     @JsonIgnore
     val topicToAlias: Map<String, String> = aliasToTopic.asSequence()
@@ -213,6 +242,7 @@ class Config(
 
         require(reconnectBackoffMaxMs > 0) { "'reconnectBackoffMaxMs' must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
         require(reconnectBackoffMs > 0) { "'reconnectBackoffMs' must be positive. Please, check the configuration. $reconnectBackoffMs" }
+        require(kafkaPollTimeoutMs > 0) { "'kafkaPollTimeoutMs' must be positive. Please, check the configuration. $kafkaPollTimeoutMs" }
         require(batchSize > 0) { "'batchSize' must be positive. Please, check the configuration. $batchSize" }
         require(maxInactivityPeriod > 0) { "'maxInactivityPeriod' must be positive. Please, check the configuration. $maxInactivityPeriod" }
         require(timeSpan > 0) { "'timeSpan' must be positive. Please, check the configuration. $timeSpan" }
@@ -251,3 +281,11 @@ data class KafkaStream(
     @JsonProperty(required = true) val key: String?,
     @JsonProperty(defaultValue = "false") val subscribe: Boolean = false
 )
+
+enum class ResetOffset {
+    NONE,
+    BEGIN,
+    END,
+    TIME,
+    MESSAGE
+}

@@ -61,6 +61,8 @@ fun main(args: Array<String>) {
         CommonFactory()
     }.apply { resources += "factory" to ::close }
 
+    LOGGER.info("java.security.krb5.conf = ${System.getProperty("java.security.krb5.conf")}")
+
     runCatching {
         val config: Config = factory.getCustomConfiguration(Config::class.java)
         val messageRouterRawBatch = factory.messageRouterRawBatch

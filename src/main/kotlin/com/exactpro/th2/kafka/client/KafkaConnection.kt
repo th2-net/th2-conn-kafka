@@ -53,6 +53,7 @@ class KafkaConnection(
 ) : Runnable, Closeable {
     private val consumer: Consumer<String, ByteArray> = kafkaClientsFactory.getKafkaConsumer()
     private val producer: Producer<String, ByteArray> = kafkaClientsFactory.getKafkaProducer()
+    private val pollTimeout = Duration.ofMillis(config.kafkaPollTimeoutMs)
 
     fun publish(message: RawMessage) {
         val alias = message.sessionAlias ?: error("Message '${message.id.logId}' does not contain session alias.")
@@ -88,7 +89,7 @@ class KafkaConnection(
     }
 
     private fun isKafkaAvailable(): Boolean = try {
-        consumer.listTopics(POLL_TIMEOUT)
+        consumer.listTopics(pollTimeout)
         true
     } catch (e: TimeoutException) {
         false
@@ -96,10 +97,43 @@ class KafkaConnection(
 
     override fun run() = try {
         val startTimestamp = Instant.now().toEpochMilli()
-        consumer.subscribe(config.topicToAlias.keys + config.topicAndKeyToAlias.map { it.key.topic })
+        val topics = config.topicToAlias.keys + config.topicAndKeyToAlias.map { it.key.topic }
+        consumer.subscribe(topics)
+
+        if (config.offsetResetOnStart != ResetOffset.NONE) {
+            val partitions = topics.asSequence()
+                .flatMap { consumer.partitionsFor(it, pollTimeout) }
+                .map { TopicPartition(it.topic(), it.partition()) }
+                .toList()
+
+            when (config.offsetResetOnStart) {
+                ResetOffset.BEGIN -> consumer.seekToBeginning(partitions)
+                ResetOffset.END -> consumer.seekToEnd(partitions)
+                ResetOffset.MESSAGE -> {
+                    if (config.offsetResetMessage >= 0) {
+                        partitions.forEach { consumer.seek(it, config.offsetResetMessage) }
+                    } else {
+                        consumer.endOffsets(partitions)
+                            .forEach { consumer.seek(it.key, it.value + config.offsetResetMessage) }
+                    }
+                }
+                ResetOffset.TIME -> {
+                    val time = if (config.offsetResetTimeMs >= 0) {
+                        config.offsetResetTimeMs
+                    } else {
+                        System.currentTimeMillis() + config.offsetResetTimeMs
+                    }
+
+                    consumer.offsetsForTimes(partitions.associateWith { time }, pollTimeout).forEach {
+                        consumer.seek(it.key, it.value.offset())
+                    }
+                }
+                else -> error("Wrong 'offsetResetOnStart' value")
+            }
+        }
 
         while (!Thread.currentThread().isInterrupted) {
-            val records: ConsumerRecords<String?, ByteArray> = consumer.poll(POLL_TIMEOUT)
+            val records: ConsumerRecords<String?, ByteArray> = consumer.poll(pollTimeout)
 
             if (records.isEmpty) {
                 if (config.kafkaConnectionEvents && !isKafkaAvailable()) {
@@ -125,7 +159,7 @@ class KafkaConnection(
             val topicsToSkip: MutableSet<String> = HashSet()
             for (record in records) {
                 val inactivityPeriod = startTimestamp - record.timestamp()
-                if (inactivityPeriod > config.maxInactivityPeriod.inWholeMilliseconds) {
+                if (inactivityPeriod > config.maxInactivityPeriodDuration.inWholeMilliseconds) {
                     val topicToSkip = record.topic()
                     topicsToSkip.add(topicToSkip)
                     consumer.seekToEnd(
@@ -196,7 +230,6 @@ class KafkaConnection(
 
     companion object {
         private val LOGGER = KotlinLogging.logger {}
-        private val POLL_TIMEOUT = Duration.ofMillis(100L)
         private const val CONNECTIVITY_EVENT_TYPE = "ConnectivityServiceEvent"
 
         private const val METADATA_TOPIC = "th2.kafka.topic"
