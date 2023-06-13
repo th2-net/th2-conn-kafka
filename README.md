@@ -1,4 +1,4 @@
-# KafkaConnect (0.1.2)
+# KafkaConnect (0.2.0)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
@@ -95,7 +95,7 @@ Example of pins configuration:
 ```yaml
 spec:
   imageName: ghcr.io/th2-net/th2-conn-kafka
-  imageVersion: 0.1.2
+  imageVersion: 0.2.0
   type: th2-conn
 
   pins:
@@ -114,7 +114,7 @@ spec:
 
 ## Release notes
 
-### 0.1.2
+### 0.2.0
 
 + Secure connection support
 + Kafka batching settings
