@@ -28,14 +28,15 @@ import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
 import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
-import com.exactpro.th2.kafka.client.utility.storeEvent
 import mu.KotlinLogging
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
@@ -73,7 +74,7 @@ fun main(args: Array<String>) {
                 }
         }.apply { resources += "message processor" to ::close }
 
-        val eventSender = EventSender(factory.eventBatchRouter, factory.rootEventId)
+        val eventSender = EventSender(factory.eventBatchRouter, factory.rootEventId, config)
 
         if (config.createTopics) KafkaConnection.createTopics(config)
         val connection = KafkaConnection(config, factory, messageProcessor, eventSender, KafkaClientsFactory(config))
@@ -124,7 +125,23 @@ fun main(args: Array<String>) {
     LOGGER.info { "Microservice shutted down." }
 }
 
-class EventSender(private val eventRouter: MessageRouter<EventBatch>, private val rootEventId: EventID) {
+class EventSender(
+    private val eventRouter: MessageRouter<EventBatch>,
+    private val rootEventId: EventID,
+    config: Config
+) : AutoCloseable {
+    private val batchSenderExecutor = Executors.newSingleThreadScheduledExecutor()
+    private val eventBatcher = EventBatcher(
+        maxBatchSizeInBytes = config.eventBatchMaxBytes,
+        maxBatchSizeInItems = config.eventBatchMaxEvents,
+        maxFlushTime = config.timeSpanUnit.toMillis(config.eventBatchTimeSpan),
+        executor = batchSenderExecutor,
+        onBatch = {
+            eventRouter.send(it)
+            LOGGER.debug { "EventBatch with ${it.eventsCount} events sent" }
+        }
+    )
+
     fun onEvent(
         name: String,
         type: String,
@@ -151,6 +168,12 @@ class EventSender(private val eventRouter: MessageRouter<EventBatch>, private va
             event.status(status)
         }
 
-        eventRouter.storeEvent(event, parentEventId ?: rootEventId)
+        eventBatcher.onEvent(event.toProto(parentEventId ?: rootEventId))
+    }
+
+    override fun close() {
+        eventBatcher.close()
+        batchSenderExecutor.shutdown()
+        batchSenderExecutor.awaitTermination(10, TimeUnit.SECONDS)
     }
 }

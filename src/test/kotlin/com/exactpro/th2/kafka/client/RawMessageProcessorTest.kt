@@ -24,12 +24,13 @@ import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sequence
+import com.exactpro.th2.common.message.sessionAlias
+import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.util.toInstant
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.data.Percentage
 import kotlin.test.Test
 import java.time.Instant
-import java.util.EnumMap
 import java.util.Random
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -40,7 +41,7 @@ class RawMessageProcessorTest {
     fun batchingTest() {
         val generatorThreads = 5
         val messagesPerThread = 5000
-        val maxBatchSize = 20
+        val maxBatchSize = 200
 
         val outputBatches = sendMessages(
             generatorThreads,
@@ -55,7 +56,7 @@ class RawMessageProcessorTest {
 
         outputBatches.asSequence()
             .map { (batch, _) -> batch }
-            .groupBy { it.getMessages(0).metadata.id.connectionId.sessionGroup }
+            .groupBy { it.getMessages(0).sessionGroup }
             .forEach { (sessionGroup, batches) -> validateBatchList(sessionGroup, batches, maxBatchSize) }
     }
 
@@ -88,6 +89,7 @@ class RawMessageProcessorTest {
                                     )
                             )
                     )
+                msgBuilder.sessionAlias = msgBuilder.sessionGroup
                 batcher.onMessage(msgBuilder)
                 Thread.sleep(sendInterval)
             }
@@ -104,9 +106,7 @@ class RawMessageProcessorTest {
 
     private fun validateBatchList(sessionGroup: String, batches: List<RawMessageBatch>, maxBatchSize: Int) {
         var prevTimestamp = 0L
-        val currentSequences: MutableMap<Direction, Long> = EnumMap(Direction::class.java)
-        currentSequences[Direction.FIRST] = 0
-        currentSequences[Direction.SECOND] = 0
+        val counters: MutableMap<Pair<String, Direction>, Long> = HashMap()
 
         batches.forEachIndexed { index, batch ->
             if (index < batches.lastIndex) {
@@ -128,11 +128,15 @@ class RawMessageProcessorTest {
                     .isEqualTo(sessionGroup)
 
                 // verify sequence ordering
-                val prevMessageSequence = currentSequences[message.direction]
+                val expectedMessageSequence = counters.getOrPut(message.sessionAlias to message.direction) {
+                    message.sequence
+                }
+
                 assertThat(message.sequence)
                     .describedAs("Sequence number should be greater than previous")
-                    .isGreaterThan(prevMessageSequence)
-                currentSequences[message.direction] = message.sequence
+                    .isEqualTo(expectedMessageSequence)
+
+                counters[message.sessionAlias to message.direction] = message.sequence + 1L
 
                 // verify timestamp ordering
                 val timestamp = with(message.metadata.id.timestamp) {
