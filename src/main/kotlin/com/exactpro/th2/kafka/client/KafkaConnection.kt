@@ -17,20 +17,26 @@
 package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.grpc.ConnectionID
-import com.exactpro.th2.common.grpc.Direction
-import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.grpc.RawMessageMetadata
+import com.exactpro.th2.common.grpc.MessageID as ProtoMessageID
+import com.exactpro.th2.common.grpc.ConnectionID as ProtoConnectionID
+import com.exactpro.th2.common.grpc.Direction as ProtoDirection
+import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
+import com.exactpro.th2.common.grpc.RawMessageMetadata as ProtoRawMessageMetadata
 import com.exactpro.th2.common.utils.message.id
-import com.exactpro.th2.common.utils.message.logId
-import com.exactpro.th2.common.utils.message.sessionAlias
 import com.exactpro.th2.common.schema.factory.CommonFactory
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Direction
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageId
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.toByteArray
+import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.common.utils.message.transport.toProto
 import com.google.protobuf.UnsafeByteOperations
 import mu.KotlinLogging
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.AdminClientConfig
 import org.apache.kafka.clients.admin.NewTopic
 import org.apache.kafka.clients.consumer.Consumer
+import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.clients.consumer.ConsumerRecords
 import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.clients.producer.Producer
@@ -40,50 +46,49 @@ import org.apache.kafka.common.errors.TimeoutException
 import java.io.Closeable
 import java.time.Duration
 import java.time.Instant
-import java.util.HashSet
 import java.util.Collections
 import java.util.concurrent.CompletableFuture
 
-class KafkaConnection(
+abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
     private val config: Config,
     private val factory: CommonFactory,
-    private val messageProcessor: RawMessageProcessor,
+    private val messageAcceptor: MessageAcceptor<MESSAGE, MESSAGE_BUILDER>,
     private val eventSender: EventSender,
     kafkaClientsFactory: KafkaClientsFactory
 ) : Runnable, Closeable {
+    protected val bookName = factory.boxConfiguration.bookName
     private val consumer: Consumer<String, ByteArray> = kafkaClientsFactory.getKafkaConsumer()
     private val producer: Producer<String, ByteArray> = kafkaClientsFactory.getKafkaProducer()
     private val pollTimeout = Duration.ofMillis(config.kafkaPollTimeoutMs)
 
-    fun publish(message: RawMessage) {
-        val alias = message.sessionAlias ?: error("Message '${message.id.logId}' does not contain session alias.")
+    protected abstract val MESSAGE.logId: String
+    protected abstract val MESSAGE.messageSessionAlias: String?
+    protected abstract val MESSAGE.rawBody: ByteArray
+    protected abstract fun MESSAGE.toProtoMessageId(sessionGroup: String): ProtoMessageID?
+    protected abstract fun prepareOutgoingMessage(messageToSend: MESSAGE, book: String): MESSAGE_BUILDER
+    protected abstract fun prepareIncomingMessage(alias: String, record: ConsumerRecord<String?, ByteArray>, metadataFields: Map<String, String>): MESSAGE_BUILDER
+
+    fun publish(message: MESSAGE) {
+        val alias = message.messageSessionAlias ?: error("Message '${message.logId}' does not contain session alias.")
+
+        val newMessageBuilder = prepareOutgoingMessage(message, bookName)
+        val messageFuture = CompletableFuture<Pair<MESSAGE, String>>()
+
+        messageAcceptor.onMessage(newMessageBuilder) { msg, sessionGroup -> messageFuture.complete(msg to sessionGroup) }
+
+        val value = message.rawBody
         val kafkaStream = config.aliasToTopicAndKey[alias] ?: KafkaStream(config.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."), null)
-        val value = message.body.toByteArray()
-        val messageIdBuilder = message.id.toBuilder().apply {
-            direction = Direction.SECOND
-            bookName = factory.boxConfiguration.bookName
-            setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup.getValue(alias)))
-        }
-
-        val messageFuture = CompletableFuture<RawMessage>()
-        messageProcessor.onMessage(
-            RawMessage.newBuilder()
-                .setMetadata(message.metadata.toBuilder().setId(messageIdBuilder))
-                .setBody(message.body),
-            messageFuture::complete
-        )
-
         val kafkaRecord = ProducerRecord<String, ByteArray>(kafkaStream.topic, kafkaStream.key, value)
         producer.send(kafkaRecord) { _, exception: Throwable? ->
-            val outMessage = messageFuture.get()
+            val (outMessage, sessionGroup) = messageFuture.get()
             if (exception == null) {
-                val msgText = "Message '${outMessage.id.logId}' sent to Kafka"
+                val msgText = "Message '${outMessage.logId}' sent to Kafka"
                 LOGGER.info(msgText)
                 if (config.messagePublishingEvents) {
-                    eventSender.onEvent(msgText, "Send message", outMessage)
+                    eventSender.onEvent(msgText, "Send message", outMessage.toProtoMessageId(sessionGroup))
                 }
             } else {
-                throw RuntimeException("Failed to send message '${outMessage.id.logId}' to Kafka", exception)
+                throw RuntimeException("Failed to send message '${outMessage.logId}' to Kafka", exception)
             }
         }
     }
@@ -165,8 +170,7 @@ class KafkaConnection(
                     consumer.seekToEnd(
                         consumer.partitionsFor(topicToSkip).map { TopicPartition(topicToSkip, it.partition()) }
                     )
-                    val msgText =
-                        "Inactivity period exceeded ($inactivityPeriod ms). Skipping unread messages in '$topicToSkip' topic."
+                    val msgText = "Inactivity period exceeded ($inactivityPeriod ms). Skipping unread messages in '$topicToSkip' topic."
                     LOGGER.info { msgText }
                     eventSender.onEvent(msgText, CONNECTIVITY_EVENT_TYPE)
                 } else {
@@ -176,33 +180,22 @@ class KafkaConnection(
                         ?: config.topicAndKeyToAlias[KafkaStream(record.topic(), record.key(), true)]
                         ?: continue
 
-                    val messageID = factory.newMessageIDBuilder()
-                        .setConnectionId(
-                            ConnectionID.newBuilder()
-                                .setSessionAlias(alias)
-                                .setSessionGroup(config.aliasToSessionGroup.getValue(alias))
-                        )
-                        .setDirection(Direction.FIRST)
-
-                    val metadata = RawMessageMetadata.newBuilder().setId(messageID)
-
-                    if (config.addExtraMetadata) {
-                        metadata.putProperties(METADATA_TOPIC, record.topic())
-                        if (record.key() !== null) metadata.putProperties(METADATA_KEY, record.key())
-                        metadata.putProperties(METADATA_PARTITION, record.partition().toString())
-                        metadata.putProperties(METADATA_OFFSET, record.offset().toString())
-                        metadata.putProperties(METADATA_TIMESTAMP, record.timestamp().toString())
-                        if (record.timestampType() !== null) metadata.putProperties(
-                            METADATA_TIMESTAMP_TYPE,
-                            record.timestampType().toString()
-                        )
+                    val metadataFields = if (config.addExtraMetadata) {
+                        hashMapOf<String, String>().apply {
+                            put(METADATA_TOPIC, record.topic())
+                            record.key()?.let { put(METADATA_KEY, it) }
+                            put(METADATA_PARTITION, record.partition().toString())
+                            put(METADATA_OFFSET, record.offset().toString())
+                            put(METADATA_TIMESTAMP, record.timestamp().toString())
+                            record.timestampType()?.let { put(METADATA_TIMESTAMP_TYPE, it.toString()) }
+                        }
+                    } else {
+                        emptyMap()
                     }
 
-                    messageProcessor.onMessage(RawMessage.newBuilder()
-                        .setMetadata(metadata)
-                        .setBody(UnsafeByteOperations.unsafeWrap(record.value()))
-                    )
-                }
+                    val builder = prepareIncomingMessage(alias, record, metadataFields)
+                    messageAcceptor.onMessage(builder)
+                 }
             }
 
             consumer.commitAsync { offsets: Map<TopicPartition, OffsetAndMetadata>, exception: Exception? ->
@@ -224,9 +217,7 @@ class KafkaConnection(
         consumer.close()
     }
 
-    override fun close() {
-        producer.close()
-    }
+    override fun close() = producer.close()
 
     companion object {
         private val LOGGER = KotlinLogging.logger {}
@@ -271,4 +262,79 @@ class KafkaConnection(
             }
         }
     }
+}
+
+class ProtoKafkaConnection(
+    private val config: Config,
+    private val factory: CommonFactory,
+    messageAcceptor: MessageAcceptor<ProtoRawMessage, ProtoRawMessage.Builder>,
+    eventSender: EventSender,
+    kafkaClientsFactory: KafkaClientsFactory
+) : KafkaConnection<ProtoRawMessage, ProtoRawMessage.Builder>(config, factory, messageAcceptor, eventSender, kafkaClientsFactory) {
+
+    override val ProtoRawMessage.logId: String get() = id.logId
+    override val ProtoRawMessage.messageSessionAlias: String? get() = id.connectionId.sessionAlias
+    override val ProtoRawMessage.rawBody: ByteArray get() = body.toByteArray()
+    override fun ProtoRawMessage.toProtoMessageId(sessionGroup: String): ProtoMessageID = id
+
+    override fun prepareOutgoingMessage(messageToSend: ProtoRawMessage, book: String): ProtoRawMessage.Builder {
+        val messageIdBuilder = messageToSend.id.toBuilder().apply {
+            direction = ProtoDirection.SECOND
+        }
+
+        return ProtoRawMessage.newBuilder()
+            .setMetadata(messageToSend.metadata.toBuilder().setId(messageIdBuilder))
+            .setBody(messageToSend.body)
+    }
+
+    override fun prepareIncomingMessage(
+        alias: String,
+        record: ConsumerRecord<String?, ByteArray>,
+        metadataFields: Map<String, String>
+    ): ProtoRawMessage.Builder {
+        val messageID = ProtoMessageID.newBuilder()
+            .setDirection(ProtoDirection.FIRST)
+            .setConnectionId(ProtoConnectionID.newBuilder().setSessionAlias(alias))
+
+        val metadata = ProtoRawMessageMetadata.newBuilder()
+            .setId(messageID)
+            .putAllProperties(metadataFields)
+
+        return ProtoRawMessage.newBuilder()
+            .setMetadata(metadata)
+            .setBody(UnsafeByteOperations.unsafeWrap(record.value()))
+    }
+}
+
+class TransportKafkaConnection(
+    private val config: Config,
+    private val factory: CommonFactory,
+    messageAcceptor: MessageAcceptor<RawMessage, RawMessage.Builder>,
+    eventSender: EventSender,
+    kafkaClientsFactory: KafkaClientsFactory
+) : KafkaConnection<RawMessage, RawMessage.Builder>(config, factory, messageAcceptor, eventSender, kafkaClientsFactory) {
+    override val RawMessage.logId: String // TODO: move to utils?
+        get() = "${id.sessionAlias}:${id.direction.toString().lowercase()}:${id.timestamp}:${id.sequence}:${id.subsequence.joinToString(".")}"
+    override val RawMessage.messageSessionAlias: String? get() = id.sessionAlias
+    override val RawMessage.rawBody: ByteArray get() = body.toByteArray()
+    override fun RawMessage.toProtoMessageId(sessionGroup: String): ProtoMessageID = id.toProto(bookName, sessionGroup)
+
+    override fun prepareOutgoingMessage(messageToSend: RawMessage, book: String): RawMessage.Builder = RawMessage.builder()
+        .setId(messageToSend.id.toBuilder().setDirection(Direction.OUTGOING).build())
+        .setMetadata(messageToSend.metadata)
+        .setBody(messageToSend.body)
+
+    override fun prepareIncomingMessage(
+        alias: String,
+        record: ConsumerRecord<String?, ByteArray>,
+        metadataFields: Map<String, String>
+    ): RawMessage.Builder = RawMessage.builder()
+        .setId(
+            MessageId.builder()
+                .setDirection(Direction.INCOMING)
+                .setSessionAlias(alias)
+                .build()
+        )
+        .setMetadata(metadataFields)
+        .setBody(record.value())
 }

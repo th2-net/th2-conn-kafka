@@ -194,7 +194,9 @@ class Config(
     val createTopics: Boolean = false,
     val topicsToCreate: List<String> = emptyList(),
     val newTopicsPartitions: Int = 1,
-    val newTopicsReplicationFactor: Short = 1
+    val newTopicsReplicationFactor: Short = 1,
+
+    val useTransport: Boolean = false
 ) {
     @JsonIgnore
     val maxInactivityPeriodDuration: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)

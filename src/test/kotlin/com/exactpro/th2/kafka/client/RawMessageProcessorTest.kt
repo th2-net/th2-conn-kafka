@@ -70,7 +70,7 @@ class RawMessageProcessorTest {
         val rnd = Random(0)
         val outputBatches: MutableList<Pair<RawMessageBatch, Long>> = ArrayList()
 
-        RawMessageProcessor(maxBatchSize, maxFlushTime, TimeUnit.MILLISECONDS) {
+        ProtoRawMessageProcessor(maxBatchSize, maxFlushTime, TimeUnit.MILLISECONDS, BOOK_NAME, emptyMap<String, String>().withDefault { it }) {
             outputBatches += it to Instant.now().toEpochMilli()
         }.use { batcher ->
 
@@ -85,11 +85,10 @@ class RawMessageProcessorTest {
                                     .setDirection(Direction.forNumber(rnd.nextInt(2)))
                                     .setConnectionId(
                                         ConnectionID.newBuilder()
-                                            .setSessionGroup(SESSION_GROUPS[rnd.nextInt(SESSION_GROUPS.size)])
+                                            .setSessionAlias(SESSION_ALIASES[rnd.nextInt(SESSION_ALIASES.size)])
                                     )
                             )
                     )
-                msgBuilder.sessionAlias = msgBuilder.sessionGroup
                 batcher.onMessage(msgBuilder)
                 Thread.sleep(sendInterval)
             }
@@ -185,6 +184,7 @@ class RawMessageProcessorTest {
     }
 
     companion object {
-        private val SESSION_GROUPS = arrayOf("group_01", "group_02", "group_03")
+        private val SESSION_ALIASES = arrayOf("alias_01", "alias_02", "alias_03")
+        private const val BOOK_NAME = "book_01"
     }
 }

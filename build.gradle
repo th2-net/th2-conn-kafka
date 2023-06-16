@@ -46,10 +46,12 @@ jar {
 
 dependencies {
     api platform("com.exactpro.th2:bom:4.3.0")
-    implementation "com.exactpro.th2:common:5.2.1-dev"
-    implementation "com.exactpro.th2:common-utils:2.0.0-dev"
+    implementation "com.exactpro.th2:common:5.3.0-json-raw-body-5242142633-7ac1672-SNAPSHOT"
+    implementation "com.exactpro.th2:common-utils:2.1.0-transport-protocol-5153730274-14792e9-SNAPSHOT"
 
-    implementation "org.apache.kafka:kafka-clients:3.4.1"
+    implementation "org.apache.kafka:kafka-clients:3.5.0"
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
+    implementation "io.github.microutils:kotlin-logging:3.0.0"
 
     testImplementation "org.jetbrains.kotlin:kotlin-test-junit5"
     testImplementation "org.mockito.kotlin:mockito-kotlin:5.0.0"

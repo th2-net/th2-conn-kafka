@@ -21,7 +21,7 @@ package com.exactpro.th2.kafka.client
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessageBatch
 import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.message.toJson
@@ -65,7 +65,7 @@ fun main(args: Array<String>) {
         val config: Config = factory.getCustomConfiguration(Config::class.java)
         val messageRouterRawBatch = factory.messageRouterRawBatch
 
-        val messageProcessor = RawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit) {
+        val messageProcessor = ProtoRawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit, factory.boxConfiguration.bookName, config.aliasToSessionGroup) {
             LOGGER.trace { "Sending batch with ${it.messagesCount} messages to MQ." }
             it.runCatching(messageRouterRawBatch::send)
                 .onFailure { e -> LOGGER.error(e) {
@@ -77,7 +77,7 @@ fun main(args: Array<String>) {
         val eventSender = EventSender(factory.eventBatchRouter, factory.rootEventId, config)
 
         if (config.createTopics) KafkaConnection.createTopics(config)
-        val connection = KafkaConnection(config, factory, messageProcessor, eventSender, KafkaClientsFactory(config))
+        val connection = ProtoKafkaConnection(config, factory, messageProcessor, eventSender, KafkaClientsFactory(config))
             .apply { resources += "kafka connection" to ::close }
 
         Executors.newSingleThreadExecutor().apply {
@@ -103,7 +103,7 @@ fun main(args: Array<String>) {
                 }.onFailure {
                     val errorText = "Could not publish message ${message.id.logId}. Consumer tag ${metadata.consumerTag}"
                     LOGGER.error(it) { errorText }
-                    eventSender.onEvent(errorText, "SendError", message, it)
+                    eventSender.onEvent(errorText, "SendError", message.id, it)
                 }
             }
         }
@@ -145,7 +145,7 @@ class EventSender(
     fun onEvent(
         name: String,
         type: String,
-        message: RawMessage? = null,
+        messageId: MessageID? = null,
         exception: Throwable? = null,
         status: Event.Status? = null,
         parentEventId: EventID? = null
@@ -156,8 +156,8 @@ class EventSender(
             .name(name)
             .type(type)
 
-        if (message != null) {
-            event.messageID(message.id)
+        if (messageId != null) {
+            event.messageID(messageId)
         }
 
         if (exception != null) {

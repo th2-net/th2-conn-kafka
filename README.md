@@ -1,9 +1,9 @@
-# KafkaConnect (0.2.0)
+# KafkaConnect (0.3.0)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
-
 This configuration should be specified in the custom configuration block in schema editor.
+
 ```yaml
   customConfig:
 
@@ -87,7 +87,7 @@ If the consumer loses connection to which one, then it will try to reconnect to 
 
 ## Pins
 
-Messages that were received to 'to_send' pin will be send to Kafka.
+Messages that were received to 'to_send' pin will be sent to Kafka.
 Messages that were received from / sent to the Kafka will be sent to the `out_raw` pin:
 
 Example of pins configuration:
@@ -95,7 +95,7 @@ Example of pins configuration:
 ```yaml
 spec:
   imageName: ghcr.io/th2-net/th2-conn-kafka
-  imageVersion: 0.2.0
+  imageVersion: 0.3.0
   type: th2-conn
 
   pins:
@@ -114,19 +114,19 @@ spec:
 
 ## Release notes
 
-### 0.2.0
+### 0.3.0
++ TH2 transport protocol support
 
+### 0.2.0
 + Secure connection support
 + Kafka batching settings
 + Message events publishing setting
 + Added extra metadata to messages received from Kafka
 
 ### 0.1.1
-
 + bump library versions
 
 ### 0.1.0
-
 + Migrated to Books & Pages concept
 
 ### 0.0.4
@@ -134,15 +134,12 @@ spec:
 + th2-bom upgrade to `4.2.0`
 
 ### 0.0.3
-
 + Publishing to Kafka support
 + Kafka keys support
 + Session groups support
 
 ### 0.0.2
-
 + Reusable workflow with dependency check
 
 ### 0.0.1
-
 + Initial version

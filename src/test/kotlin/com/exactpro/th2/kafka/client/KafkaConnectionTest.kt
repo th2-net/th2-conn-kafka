@@ -25,7 +25,7 @@ import com.exactpro.th2.common.utils.message.sessionAlias
 import com.exactpro.th2.common.utils.message.sessionGroup
 import com.exactpro.th2.common.schema.box.configuration.BoxConfiguration
 import com.exactpro.th2.common.schema.factory.CommonFactory
-import java.time.Duration
+import com.exactpro.th2.common.utils.message.id
 import com.google.protobuf.UnsafeByteOperations
 import org.apache.kafka.clients.consumer.Consumer
 import org.apache.kafka.clients.consumer.ConsumerRecord
@@ -37,6 +37,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import kotlin.test.Test
 import org.mockito.kotlin.*
+import java.time.Duration
 import java.lang.IllegalStateException
 import java.time.Instant
 import java.util.concurrent.Executors
@@ -49,7 +50,7 @@ class KafkaConnectionTest {
     }
 
     private val testMessageText = "QWERTY"
-    private val messageProcessor: RawMessageProcessor = mock()
+    private val messageProcessor: ProtoRawMessageProcessor = mock()
     private val eventSender: EventSender = mock()
 
     private val consumerRecords: ConsumerRecords<String, ByteArray> = mock {
@@ -81,7 +82,7 @@ class KafkaConnectionTest {
         on { getKafkaProducer() } doReturn kafkaProducer
     }
 
-    private val connection = KafkaConnection(
+    private val connection = ProtoKafkaConnection(
         Config(
             aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01"), "alias_02" to KafkaTopic("topic_02")),
             aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", "key_03", true)),
@@ -105,17 +106,17 @@ class KafkaConnectionTest {
         connection.publish(testMessage)
 
         val messageBuilderCaptor = argumentCaptor<RawMessage.Builder>()
-        val processorCallbackCaptor = argumentCaptor<(RawMessage) -> Unit>()
+        val processorCallbackCaptor = argumentCaptor<(RawMessage, String) -> Unit>()
         verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture(), processorCallbackCaptor.capture())
 
         val outMessage = messageBuilderCaptor.firstValue.build()
-        assertThat(outMessage.bookName).isEqualTo("book_01")
+        assertThat(outMessage.bookName).isEqualTo("") // should be set in MessageProcessor
         assertThat(outMessage.sessionAlias).isEqualTo("alias_01")
-        assertThat(outMessage.sessionGroup).isEqualTo("group_01")
+        assertThat(outMessage.metadata.id.connectionId.sessionGroup).isEqualTo("") // should be set in MessageProcessor
         assertThat(outMessage.direction).isEqualTo(Direction.SECOND)
         assertThat(outMessage.body.toStringUtf8()).isEqualTo(testMessageText)
 
-        processorCallbackCaptor.firstValue.invoke(outMessage) // complete CompletableFuture
+        processorCallbackCaptor.firstValue.invoke(outMessage, outMessage.id.connectionId.sessionGroup) // complete CompletableFuture
 
         val recordCaptor = argumentCaptor<ProducerRecord<String, ByteArray>>()
         val producerCallbackCaptor = argumentCaptor<Callback>()
@@ -126,7 +127,7 @@ class KafkaConnectionTest {
         assertThat(kafkaRecord.topic()).isEqualTo("topic_01")
         assertThat(kafkaRecord.key()).isNull()
         assertThat(String(kafkaRecord.value())).isEqualTo(testMessageText)
-        verify(eventSender, only()).onEvent(any(), eq("Send message"), eq(outMessage), eq(null), eq(null), eq(null))
+        verify(eventSender, only()).onEvent(any(), eq("Send message"), eq(outMessage.id), eq(null), eq(null), eq(null))
     }
 
     @Test
@@ -154,9 +155,9 @@ class KafkaConnectionTest {
         verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture(), any())
 
         val messageBuilder = messageBuilderCaptor.firstValue
-        assertThat(messageBuilder.bookName).isEqualTo("book_01")
+        assertThat(messageBuilder.bookName).isEqualTo("") // should be set in MessageProcessor
         assertThat(messageBuilder.sessionAlias).isEqualTo("alias_03")
-        assertThat(messageBuilder.sessionGroup).isEqualTo("alias_03") // if no group name provided sessionAlias is used as group name
+        assertThat(messageBuilder.sessionGroup).isEqualTo(null) // should be set in MessageProcessor
         assertThat(messageBuilder.direction).isEqualTo(Direction.FIRST)
         assertThat(messageBuilder.body.toStringUtf8()).isEqualTo(testMessageText)
     }
