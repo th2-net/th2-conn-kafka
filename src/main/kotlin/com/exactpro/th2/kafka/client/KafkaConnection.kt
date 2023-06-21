@@ -29,6 +29,7 @@ import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageId
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.toByteArray
 import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.common.utils.message.transport.logId
 import com.exactpro.th2.common.utils.message.transport.toProto
 import com.google.protobuf.UnsafeByteOperations
 import mu.KotlinLogging
@@ -51,7 +52,7 @@ import java.util.concurrent.CompletableFuture
 
 abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
     private val config: Config,
-    private val factory: CommonFactory,
+    factory: CommonFactory,
     private val messageAcceptor: MessageAcceptor<MESSAGE, MESSAGE_BUILDER>,
     private val eventSender: EventSender,
     kafkaClientsFactory: KafkaClientsFactory
@@ -62,14 +63,14 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
     private val pollTimeout = Duration.ofMillis(config.kafkaPollTimeoutMs)
 
     protected abstract val MESSAGE.logId: String
-    protected abstract val MESSAGE.messageSessionAlias: String?
+    protected abstract val MESSAGE.messageSessionAlias: String
     protected abstract val MESSAGE.rawBody: ByteArray
     protected abstract fun MESSAGE.toProtoMessageId(sessionGroup: String): ProtoMessageID?
     protected abstract fun prepareOutgoingMessage(messageToSend: MESSAGE, book: String): MESSAGE_BUILDER
     protected abstract fun prepareIncomingMessage(alias: String, record: ConsumerRecord<String?, ByteArray>, metadataFields: Map<String, String>): MESSAGE_BUILDER
 
     fun publish(message: MESSAGE) {
-        val alias = message.messageSessionAlias ?: error("Message '${message.logId}' does not contain session alias.")
+        val alias = message.messageSessionAlias
 
         val newMessageBuilder = prepareOutgoingMessage(message, bookName)
         val messageFuture = CompletableFuture<Pair<MESSAGE, String>>()
@@ -265,15 +266,15 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
 }
 
 class ProtoKafkaConnection(
-    private val config: Config,
-    private val factory: CommonFactory,
+    config: Config,
+    factory: CommonFactory,
     messageAcceptor: MessageAcceptor<ProtoRawMessage, ProtoRawMessage.Builder>,
     eventSender: EventSender,
     kafkaClientsFactory: KafkaClientsFactory
 ) : KafkaConnection<ProtoRawMessage, ProtoRawMessage.Builder>(config, factory, messageAcceptor, eventSender, kafkaClientsFactory) {
 
     override val ProtoRawMessage.logId: String get() = id.logId
-    override val ProtoRawMessage.messageSessionAlias: String? get() = id.connectionId.sessionAlias
+    override val ProtoRawMessage.messageSessionAlias: String get() = id.connectionId.sessionAlias.apply { if (isEmpty()) error("Message '${logId}' does not contain session alias.") }
     override val ProtoRawMessage.rawBody: ByteArray get() = body.toByteArray()
     override fun ProtoRawMessage.toProtoMessageId(sessionGroup: String): ProtoMessageID = id
 
@@ -307,15 +308,14 @@ class ProtoKafkaConnection(
 }
 
 class TransportKafkaConnection(
-    private val config: Config,
-    private val factory: CommonFactory,
+    config: Config,
+    factory: CommonFactory,
     messageAcceptor: MessageAcceptor<RawMessage, RawMessage.Builder>,
     eventSender: EventSender,
     kafkaClientsFactory: KafkaClientsFactory
 ) : KafkaConnection<RawMessage, RawMessage.Builder>(config, factory, messageAcceptor, eventSender, kafkaClientsFactory) {
-    override val RawMessage.logId: String // TODO: move to utils?
-        get() = "${id.sessionAlias}:${id.direction.toString().lowercase()}:${id.timestamp}:${id.sequence}:${id.subsequence.joinToString(".")}"
-    override val RawMessage.messageSessionAlias: String? get() = id.sessionAlias
+    override val RawMessage.logId: String get() = id.logId
+    override val RawMessage.messageSessionAlias: String get() = id.sessionAlias
     override val RawMessage.rawBody: ByteArray get() = body.toByteArray()
     override fun RawMessage.toProtoMessageId(sessionGroup: String): ProtoMessageID = id.toProto(bookName, sessionGroup)
 

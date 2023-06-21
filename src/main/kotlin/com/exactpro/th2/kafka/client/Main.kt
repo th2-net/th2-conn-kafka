@@ -33,6 +33,7 @@ import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.common.utils.message.transport.logId
 import com.exactpro.th2.common.utils.message.transport.toProto
 import mu.KotlinLogging
 import java.util.Deque
@@ -44,7 +45,8 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 private val LOGGER = KotlinLogging.logger {}
-private const val INPUT_QUEUE_ATTRIBUTE = "send"
+private val PROTO_INPUT_QUEUE_ATTRIBUTES = arrayOf("send", "raw")
+private val TRANSPORT_INPUT_QUEUE_ATTRIBUTES = arrayOf("send", "transport")
 
 fun main(args: Array<String>) {
     val resources: Deque<Pair<String, () -> Unit>> = ConcurrentLinkedDeque()
@@ -108,7 +110,7 @@ fun main(args: Array<String>) {
                     }
                 }
             }
-            { transportRouter.subscribeAll(transportListener, INPUT_QUEUE_ATTRIBUTE) }
+            { transportRouter.subscribeAll(transportListener, *TRANSPORT_INPUT_QUEUE_ATTRIBUTES ) }
         } else {
             val messageRouterRawBatch = factory.messageRouterRawBatch
             val messageProcessor = ProtoRawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit, factory.boxConfiguration.bookName, config.aliasToSessionGroup) {
@@ -153,7 +155,7 @@ fun main(args: Array<String>) {
                     }
                 }
             }
-            { messageRouterRawBatch.subscribeAll(protoListener, INPUT_QUEUE_ATTRIBUTE) }
+            { messageRouterRawBatch.subscribeAll(protoListener, *PROTO_INPUT_QUEUE_ATTRIBUTES) }
         }
 
         runCatching {

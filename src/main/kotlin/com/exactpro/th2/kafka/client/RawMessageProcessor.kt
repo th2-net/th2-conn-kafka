@@ -1,3 +1,19 @@
+/*
+ * Copyright 2023 Exactpro (Exactpro Systems Limited)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.grpc.RawMessageBatch
@@ -10,6 +26,7 @@ import com.exactpro.th2.common.utils.message.direction
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.common.utils.message.toTimestamp
+import com.exactpro.th2.common.utils.message.transport.logId
 import mu.KotlinLogging
 import java.time.Instant
 import java.util.concurrent.Executors
@@ -46,8 +63,6 @@ abstract class RawMessageProcessor<BATCH, BATCH_BUILDER, MESSAGE, MESSAGE_BUILDE
     protected abstract fun BATCH_BUILDER.buildBatch(): BATCH
     protected abstract fun BATCH_BUILDER.clearBatch()
     protected abstract val MESSAGE.logId: String
-//    protected abstract val MESSAGE.messageSessionGroup: String
-//    protected abstract fun MESSAGE_BUILDER.buildMessage(): MESSAGE
     protected abstract val MESSAGE_BUILDER.builderSessionAlias: String
     protected abstract fun MESSAGE_BUILDER.completeBuilding(counters: MutableMap<Pair<String, Direction>, () -> Long>, sessionGroup: String): MESSAGE
 
@@ -213,13 +228,12 @@ class TransportRawMessageProcessor(
     override val GroupBatch.Builder.size: Int get() = this.groupsBuilder().size
     override fun GroupBatch.Builder.buildBatch(): GroupBatch = build()
 
-    override fun GroupBatch.Builder.clearBatch() = TODO("Clear")
+    override fun GroupBatch.Builder.clearBatch() {
+        this.setGroups(mutableListOf())
+    }
 
-    override val RawMessage.logId: String // TODO: move to utils?
-        get() = "${id.sessionAlias}:${id.direction.toString().lowercase()}:${id.timestamp}:${id.sequence}:${id.subsequence.joinToString(".")}"
-
+    override val RawMessage.logId: String get() = id.logId
     override val RawMessage.Builder.builderSessionAlias: String get() = this.idBuilder().sessionAlias
-
 
     override fun RawMessage.Builder.completeBuilding(
         counters: MutableMap<Pair<String, Direction>, () -> Long>,
