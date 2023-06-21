@@ -46,7 +46,7 @@ import kotlin.system.exitProcess
 
 private val LOGGER = KotlinLogging.logger {}
 private val PROTO_INPUT_QUEUE_ATTRIBUTES = arrayOf("send", "raw")
-private val TRANSPORT_INPUT_QUEUE_ATTRIBUTES = arrayOf("send", "transport")
+private val TRANSPORT_INPUT_QUEUE_ATTRIBUTES = arrayOf("send", "transport-group")
 
 fun main(args: Array<String>) {
     val resources: Deque<Pair<String, () -> Unit>> = ConcurrentLinkedDeque()
