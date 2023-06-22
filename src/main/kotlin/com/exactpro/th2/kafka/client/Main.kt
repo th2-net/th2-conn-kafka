@@ -45,8 +45,7 @@ import kotlin.concurrent.thread
 import kotlin.system.exitProcess
 
 private val LOGGER = KotlinLogging.logger {}
-private val PROTO_INPUT_QUEUE_ATTRIBUTES = arrayOf("send", "raw")
-private val TRANSPORT_INPUT_QUEUE_ATTRIBUTES = arrayOf("send", "transport-group")
+private const val INPUT_QUEUE_ATTRIBUTE = "send"
 
 fun main(args: Array<String>) {
     val resources: Deque<Pair<String, () -> Unit>> = ConcurrentLinkedDeque()
@@ -110,7 +109,7 @@ fun main(args: Array<String>) {
                     }
                 }
             }
-            { transportRouter.subscribeAll(transportListener, *TRANSPORT_INPUT_QUEUE_ATTRIBUTES ) }
+            { transportRouter.subscribeAll(transportListener, INPUT_QUEUE_ATTRIBUTE ) }
         } else {
             val messageRouterRawBatch = factory.messageRouterRawBatch
             val messageProcessor = ProtoRawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit, factory.boxConfiguration.bookName, config.aliasToSessionGroup) {
@@ -155,7 +154,7 @@ fun main(args: Array<String>) {
                     }
                 }
             }
-            { messageRouterRawBatch.subscribeAll(protoListener, *PROTO_INPUT_QUEUE_ATTRIBUTES) }
+            { messageRouterRawBatch.subscribeAll(protoListener, INPUT_QUEUE_ATTRIBUTE) }
         }
 
         runCatching {
