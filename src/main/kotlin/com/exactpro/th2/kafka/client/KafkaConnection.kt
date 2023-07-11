@@ -57,7 +57,6 @@ class KafkaConnection(
 
     fun publish(message: RawMessage) {
         val alias = message.sessionAlias ?: error("Message '${message.id.logId}' does not contain session alias.")
-        val kafkaStream = config.aliasToTopicAndKey[alias] ?: KafkaStream(config.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."), null)
         val value = message.body.toByteArray()
         val messageIdBuilder = message.id.toBuilder().apply {
             direction = Direction.SECOND
@@ -73,7 +72,13 @@ class KafkaConnection(
             messageFuture::complete
         )
 
-        val kafkaRecord = ProducerRecord<String, ByteArray>(kafkaStream.topic, kafkaStream.key, value)
+        val kafkaStream = config.aliasToTopicAndKey[alias]
+        val kafkaRecord = ProducerRecord<String, ByteArray>(
+            kafkaStream?.topic ?: config.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."),
+            message.metadata.propertiesMap[METADATA_KEY] ?: kafkaStream?.key,
+            value
+        )
+
         producer.send(kafkaRecord) { _, exception: Throwable? ->
             val outMessage = messageFuture.get()
             if (exception == null) {
