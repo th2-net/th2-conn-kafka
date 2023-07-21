@@ -1,4 +1,4 @@
-# KafkaConnect (0.2.0)
+# KafkaConnect (0.3.0)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
@@ -95,7 +95,7 @@ Example of pins configuration:
 ```yaml
 spec:
   imageName: ghcr.io/th2-net/th2-conn-kafka
-  imageVersion: 0.2.0
+  imageVersion: 0.3.0
   type: th2-conn
 
   pins:
@@ -113,6 +113,11 @@ spec:
 ```
 
 ## Release notes
+
+### 0.3.0
+
++ added ability to filter by "book", "session_group", "session_alias", "message_type", "direction", "protocol".
++ conditions inside the message and metadata now combined as "and".
 
 ### 0.2.0
 
