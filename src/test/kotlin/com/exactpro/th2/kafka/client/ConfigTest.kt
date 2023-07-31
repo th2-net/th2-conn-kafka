@@ -23,34 +23,43 @@ class ConfigTest {
     @Test
     fun `valid config`() {
         Config(
-            aliasToTopic = mapOf(
-                "alias_01" to KafkaTopic("topic_01"),
-                "alias_02" to KafkaTopic("topic_02")
-            ),
-            aliasToTopicAndKey = mapOf(
-                "alias_03" to KafkaStream("topic_03", null),
-                "alias_04" to KafkaStream("topic_04", null),
-            ),
-            sessionGroups = mapOf(
-                "group_01" to listOf("alias_01", "alias_02"),
-                "group_02" to listOf("alias_03", "alias_04")
+            defaultBookConfig = BookConfig(
+                aliasToTopic = mapOf(
+                    "alias_01" to KafkaTopic("topic_01"),
+                    "alias_02" to KafkaTopic("topic_02")
+                ),
+                aliasToTopicAndKey = mapOf(
+                    "alias_03" to KafkaStream("topic_03", null),
+                    "alias_04" to KafkaStream("topic_04", null),
+                ),
+                sessionGroups = mapOf(
+                    "group_01" to listOf("alias_01", "alias_02"),
+                    "group_02" to listOf("alias_03", "alias_04")
+                )
             )
         )
     }
 
     @Test
     fun `empty alias mappings`() {
-        assertThatThrownBy { Config() }
+        assertThatThrownBy { Config(defaultBookConfig = BookConfig()) }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContainingAll("aliasToTopic", "aliasToTopicAndKey")
     }
 
     @Test
     fun `duplicated aliases`() {
-        assertThatThrownBy { Config(
-            aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01"), "alias_02" to KafkaTopic("topic_02")),
-            aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", null), "alias_01" to KafkaStream("topic_04", null))
-        ) }
+        assertThatThrownBy {
+            Config(
+                defaultBookConfig = BookConfig(
+                    aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01"), "alias_02" to KafkaTopic("topic_02")),
+                    aliasToTopicAndKey = mapOf(
+                        "alias_03" to KafkaStream("topic_03", null),
+                        "alias_01" to KafkaStream("topic_04", null)
+                    )
+                )
+            )
+        }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContainingAll("aliasToTopic", "aliasToTopicAndKey")
     }
@@ -58,11 +67,15 @@ class ConfigTest {
     @Test
     fun `duplicated topic in aliasToTopic`() {
         assertThatThrownBy {
-            Config(aliasToTopic = mapOf(
-                "alias_01" to KafkaTopic("topic_01"),
-                "alias_02" to KafkaTopic("topic_02"),
-                "alias_03" to KafkaTopic("topic_01")
-            ))
+            Config(
+                defaultBookConfig = BookConfig(
+                    aliasToTopic = mapOf(
+                        "alias_01" to KafkaTopic("topic_01"),
+                        "alias_02" to KafkaTopic("topic_02"),
+                        "alias_03" to KafkaTopic("topic_01")
+                    )
+                )
+            )
         }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContainingAll("aliasToTopic")
@@ -71,48 +84,56 @@ class ConfigTest {
     @Test
     fun `duplicated stream in aliasToTopicAndKey`() {
         assertThatThrownBy {
-            Config(aliasToTopicAndKey = mapOf(
-                "alias_01" to KafkaStream("topic_01", null),
-                "alias_02" to KafkaStream("topic_02", null),
-                "alias_03" to KafkaStream("topic_01", null)
-            ))
+            Config(
+                defaultBookConfig = BookConfig(
+                    aliasToTopicAndKey = mapOf(
+                        "alias_01" to KafkaStream("topic_01", null),
+                        "alias_02" to KafkaStream("topic_02", null),
+                        "alias_03" to KafkaStream("topic_01", null)
+                    )
+                )
+            )
         }
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContainingAll ("aliasToTopic", "aliasToTopicAndKey")
+            .hasMessageContainingAll("aliasToTopic", "aliasToTopicAndKey")
     }
 
     @Test
     fun `same topics in aliasToTopicAndKey and aliasToTopic`() {
         assertThatThrownBy {
             Config(
-                aliasToTopic = mapOf(
-                    "alias_01" to KafkaTopic("topic_01"),
-                    "alias_02" to KafkaTopic("topic_02")
-                ),
-                aliasToTopicAndKey = mapOf(
-                    "alias_03" to KafkaStream("topic_03", null),
-                    "alias_04" to KafkaStream("topic_02", null),
-                    "alias_05" to KafkaStream("topic_05", null)
+                defaultBookConfig = BookConfig(
+                    aliasToTopic = mapOf(
+                        "alias_01" to KafkaTopic("topic_01"),
+                        "alias_02" to KafkaTopic("topic_02")
+                    ),
+                    aliasToTopicAndKey = mapOf(
+                        "alias_03" to KafkaStream("topic_03", null),
+                        "alias_04" to KafkaStream("topic_02", null),
+                        "alias_05" to KafkaStream("topic_05", null)
+                    )
                 )
             )
         }
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContainingAll ("aliasToTopic", "aliasToTopicAndKey")
+            .hasMessageContainingAll("aliasToTopic", "aliasToTopicAndKey")
     }
 
     @Test
     fun `duplicated alias in sessionGroups`() {
         assertThatThrownBy {
             Config(
-                aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01")),
-                sessionGroups = mapOf(
-                    "group_01" to listOf("alias_01"),
-                    "group_02" to listOf("alias_02"),
-                    "group_03" to listOf("alias_03", "alias_02")
+                defaultBookConfig = BookConfig(
+                    aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01")),
+                    sessionGroups = mapOf(
+                        "group_01" to listOf("alias_01"),
+                        "group_02" to listOf("alias_02"),
+                        "group_03" to listOf("alias_03", "alias_02")
+                    )
                 )
             )
         }
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContainingAll ("sessionGroups")
+            .hasMessageContainingAll("sessionGroups")
     }
 }

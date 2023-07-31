@@ -83,9 +83,11 @@ class KafkaConnectionTest {
 
     private val connection = KafkaConnection(
         Config(
-            aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01"), "alias_02" to KafkaTopic("topic_02")),
-            aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", "key_03", true)),
-            sessionGroups = mapOf("group_01" to listOf("alias_01")),
+            defaultBookConfig = BookConfig(
+                aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01"), "alias_02" to KafkaTopic("topic_02")),
+                aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", "key_03", true)),
+                sessionGroups = mapOf("group_01" to listOf("alias_01"))
+            ),
             messagePublishingEvents = true
         ),
         commonFactory,
@@ -99,6 +101,7 @@ class KafkaConnectionTest {
         val testMessage = RawMessage.newBuilder()
             .setBody(UnsafeByteOperations.unsafeWrap(testMessageText.toByteArray())).apply {
                 sessionAlias = "alias_01"
+                bookName = "input_book_01"
             }
             .build()
 
@@ -109,7 +112,7 @@ class KafkaConnectionTest {
         verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture(), processorCallbackCaptor.capture())
 
         val outMessage = messageBuilderCaptor.firstValue.build()
-        assertThat(outMessage.bookName).isEqualTo("book_01")
+        assertThat(outMessage.bookName).isEqualTo("input_book_01")
         assertThat(outMessage.sessionAlias).isEqualTo("alias_01")
         assertThat(outMessage.sessionGroup).isEqualTo("group_01")
         assertThat(outMessage.direction).isEqualTo(Direction.SECOND)

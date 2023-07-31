@@ -21,6 +21,7 @@ import com.exactpro.th2.common.grpc.ConnectionID
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageMetadata
+import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.common.utils.message.sessionAlias
@@ -58,10 +59,11 @@ class KafkaConnection(
     fun publish(message: RawMessage) {
         val alias = message.sessionAlias ?: error("Message '${message.id.logId}' does not contain session alias.")
         val value = message.body.toByteArray()
+        val bookConfig = config.booksConfigs[message.bookName] ?: config.defaultBookConfig
         val messageIdBuilder = message.id.toBuilder().apply {
             direction = Direction.SECOND
-            bookName = factory.boxConfiguration.bookName
-            setConnectionId(connectionIdBuilder.setSessionGroup(config.aliasToSessionGroup.getValue(alias)))
+            bookName = message.bookName
+            setConnectionId(connectionIdBuilder.setSessionGroup(bookConfig.aliasToSessionGroup.getValue(alias)))
         }
 
         val messageFuture = CompletableFuture<RawMessage>()
@@ -72,9 +74,9 @@ class KafkaConnection(
             messageFuture::complete
         )
 
-        val kafkaStream = config.aliasToTopicAndKey[alias]
+        val kafkaStream = bookConfig.aliasToTopicAndKey[alias]
         val kafkaRecord = ProducerRecord<String, ByteArray>(
-            kafkaStream?.topic ?: config.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."),
+            kafkaStream?.topic ?: bookConfig.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."),
             message.metadata.propertiesMap[METADATA_KEY] ?: kafkaStream?.key,
             value
         )
@@ -102,7 +104,7 @@ class KafkaConnection(
 
     override fun run() = try {
         val startTimestamp = Instant.now().toEpochMilli()
-        val topics = config.topicToAlias.keys + config.topicAndKeyToAlias.map { it.key.topic }
+        val topics = config.topicToBookAndAlias.keys + config.topicAndKeyToBookAndAlias.map { it.key.topic }
         consumer.subscribe(topics)
 
         if (config.offsetResetOnStart != ResetOffset.NONE) {
@@ -177,15 +179,17 @@ class KafkaConnection(
                 } else {
                     if (record.topic() in topicsToSkip) continue
 
-                    val alias = config.topicToAlias[record.topic()]
-                        ?: config.topicAndKeyToAlias[KafkaStream(record.topic(), record.key(), true)]
+                    val (book, alias) = config.topicToBookAndAlias[record.topic()]
+                        ?: config.topicAndKeyToBookAndAlias[KafkaStream(record.topic(), record.key(), true)]
                         ?: continue
+
+                    val bookConfig = config.booksConfigs[book] ?: config.defaultBookConfig
 
                     val messageID = factory.newMessageIDBuilder()
                         .setConnectionId(
                             ConnectionID.newBuilder()
                                 .setSessionAlias(alias)
-                                .setSessionGroup(config.aliasToSessionGroup.getValue(alias))
+                                .setSessionGroup(bookConfig.aliasToSessionGroup.getValue(alias))
                         )
                         .setDirection(Direction.FIRST)
 

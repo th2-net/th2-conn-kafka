@@ -18,6 +18,7 @@ package com.exactpro.th2.kafka.client
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.annotation.JsonUnwrapped
 import org.apache.kafka.clients.CommonClientConfigs
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.common.config.SaslConfigs
@@ -28,28 +29,11 @@ import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
 class Config(
-    /**
-     * Matches th2 sessions with Kafka topics
-     */
-    val aliasToTopic: Map<String, KafkaTopic> = emptyMap(),
 
-    /**
-     * Matches th2 sessions with Kafka topics and keys
-     */
-    val aliasToTopicAndKey: Map<String, KafkaStream> = emptyMap(),
+    @JsonUnwrapped
+    val defaultBookConfig: BookConfig,
 
-    /**
-     * Matches th2 sessions with session groups
-     * Key: session group, value: list of session aliases
-     */
-    sessionGroups: Map<String, List<String>> = emptyMap(),
-
-    /**
-     * This session group will be set for outgoing messages whose
-     * session alias does not exist in the "sessionGroups" parameter.
-     */
-    defaultSessionGroup: String? = null,
-
+    val booksConfigs: Map<String, BookConfig> = emptyMap(),
     /**
      * URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster
      */
@@ -203,46 +187,27 @@ class Config(
     val maxInactivityPeriodDuration: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)
 
     @JsonIgnore
-    val topicToAlias: Map<String, String> = aliasToTopic.asSequence()
-        .filter { it.value.subscribe }
-        .map {
-            require(it.value.topic.isNotEmpty()) { "Topic can't be empty string in 'topicToAlias'" }
-            require(it.key.isNotEmpty()) { "Alias can't be empty string in 'topicToAlias'" }
-            it.value.topic to it.key
-        }.toMap()
-
-    @JsonIgnore
-    val topicAndKeyToAlias: Map<KafkaStream, String> = aliasToTopicAndKey.asSequence()
-        .filter { it.value.subscribe }
-        .map {
-            require(it.value.topic.isNotEmpty()) { "Topic can't be empty string in 'topicAndKeyToAlias'" }
-            require(it.value.key?.isNotEmpty() ?: true) { "Key can't be empty string in 'topicAndKeyToAlias'" }
-            require(it.key.isNotEmpty()) { "Alias can't be empty string in 'topicAndKeyToAlias'" }
-            it.value to it.key
-        }.toMap()
-
-    @JsonIgnore
-    val aliasToSessionGroup: Map<String, String> = sessionGroups.asSequence().flatMap { (group, aliases) ->
-        require(group.isNotEmpty()) { "Session group name can't be empty string in 'aliasToSessionGroup'" }
-        aliases.map { alias ->
-            require(alias.isNotEmpty()) { "Alias can't be empty string in 'aliasToSessionGroup'" }
-            alias to group
+    val topicToBookAndAlias: Map<String, Pair<String?, String>> = (booksConfigs.asSequence().map { it.key to it.value } + sequenceOf(null to defaultBookConfig))
+        .flatMap { (key, value) -> value.aliasToTopic.asSequence()
+            .filter { it.value.subscribe }
+            .map { it.value.topic to Pair(key, it.key) }
         }
-    }.toMap().withDefault { alias -> defaultSessionGroup ?: alias }
+        .toMap()
+
+    @JsonIgnore
+    val topicAndKeyToBookAndAlias: Map<KafkaStream, Pair<String?, String>> = (booksConfigs.asSequence().map { it.key to it.value } + sequenceOf(null to defaultBookConfig))
+        .flatMap { (key, value) -> value.aliasToTopicAndKey.asSequence()
+            .filter { it.value.subscribe }
+            .map {
+                require(it.value.topic.isNotEmpty()) { "Topic can't be empty string in 'topicAndKeyToAlias'" }
+                require(it.value.key?.isNotEmpty() ?: true) { "Key can't be empty string in 'topicAndKeyToAlias'" }
+                require(it.key.isNotEmpty()) { "Alias can't be empty string in 'topicAndKeyToAlias'" }
+                it.value to Pair(key, it.key)
+            }
+        }
+        .toMap()
 
     init {
-        require(aliasToTopicAndKey.isNotEmpty() || aliasToTopic.isNotEmpty()) { "'aliasToTopicAndKey' and 'aliasToTopic' can't both be empty" }
-
-        val duplicatedAliases = aliasToTopicAndKey.keys.intersect(aliasToTopic.keys)
-        require(duplicatedAliases.isEmpty()) { "'aliasToTopicAndKey' and 'aliasToTopic' can't contain the same aliases: $duplicatedAliases" }
-
-        require(aliasToTopic.asSequence().map { it.value.topic }.noDuplicates()) { "Duplicated topic in 'aliasToTopic'" }
-        require(aliasToTopicAndKey.asSequence().map { it.value.topic to it.value.key }.noDuplicates()) { "Duplicated data stream in 'aliasToTopicAndKey'" }
-        val duplicatedTopics = aliasToTopicAndKey.map { it.value.topic }.intersect(aliasToTopic.values.map { it.topic }.toSet())
-        require(duplicatedTopics.isEmpty()) { "'aliasToTopicAndKey' and 'aliasToTopic' can't contain the same topics: $duplicatedTopics" }
-
-        require(aliasToSessionGroup.keys.size == sessionGroups.values.sumOf { it.size }) { "Duplicated alias in 'sessionGroups'" }
-
         require(reconnectBackoffMaxMs > 0) { "'reconnectBackoffMaxMs' must be positive. Please, check the configuration. $reconnectBackoffMaxMs" }
         require(reconnectBackoffMs > 0) { "'reconnectBackoffMs' must be positive. Please, check the configuration. $reconnectBackoffMs" }
         require(kafkaPollTimeoutMs > 0) { "'kafkaPollTimeoutMs' must be positive. Please, check the configuration. $kafkaPollTimeoutMs" }
@@ -267,11 +232,6 @@ class Config(
             requireNotNull(kafkaSaslJaasConfig) { "'kafkaSaslJaasConfig'$errMsg" }
         }
     }
-
-    private fun <T> Sequence<T>.noDuplicates(): Boolean {
-        val seen: MutableSet<T> = hashSetOf()
-        return all { seen.add(it) }
-    }
 }
 
 data class KafkaTopic(
@@ -284,6 +244,58 @@ data class KafkaStream(
     @JsonProperty(required = true) val key: String?,
     @JsonProperty(defaultValue = "false") val subscribe: Boolean = false
 )
+
+class BookConfig(
+    /**
+     * Matches th2 sessions with Kafka topics
+     */
+    val aliasToTopic: Map<String, KafkaTopic> = emptyMap(),
+
+    /**
+     * Matches th2 sessions with Kafka topics and keys
+     */
+    val aliasToTopicAndKey: Map<String, KafkaStream> = emptyMap(),
+
+    /**
+     * Matches th2 sessions with session groups
+     * Key: session group, value: list of session aliases
+     */
+    sessionGroups: Map<String, List<String>> = emptyMap(),
+
+    /**
+     * This session group will be set for outgoing messages whose
+     * session alias does not exist in the "sessionGroups" parameter.
+     */
+    defaultSessionGroup: String? = null
+) {
+    @JsonIgnore
+    val aliasToSessionGroup: Map<String, String> = sessionGroups.asSequence().flatMap { (group, aliases) ->
+        require(group.isNotEmpty()) { "Session group name can't be empty string in 'aliasToSessionGroup'" }
+        aliases.map { alias ->
+            require(alias.isNotEmpty()) { "Alias can't be empty string in 'aliasToSessionGroup'" }
+            alias to group
+        }
+    }.toMap().withDefault { alias -> defaultSessionGroup ?: alias }
+
+    init {
+        require(aliasToTopicAndKey.isNotEmpty() || aliasToTopic.isNotEmpty()) { "'aliasToTopicAndKey' and 'aliasToTopic' can't both be empty" }
+
+        val duplicatedAliases = aliasToTopicAndKey.keys.intersect(aliasToTopic.keys)
+        require(duplicatedAliases.isEmpty()) { "'aliasToTopicAndKey' and 'aliasToTopic' can't contain the same aliases: $duplicatedAliases" }
+
+        require(aliasToTopic.asSequence().map { it.value.topic }.noDuplicates()) { "Duplicated topic in 'aliasToTopic'" }
+        require(aliasToTopicAndKey.asSequence().map { it.value.topic to it.value.key }.noDuplicates()) { "Duplicated data stream in 'aliasToTopicAndKey'" }
+        val duplicatedTopics = aliasToTopicAndKey.map { it.value.topic }.intersect(aliasToTopic.values.map { it.topic }.toSet())
+        require(duplicatedTopics.isEmpty()) { "'aliasToTopicAndKey' and 'aliasToTopic' can't contain the same topics: $duplicatedTopics" }
+
+        require(aliasToSessionGroup.keys.size == sessionGroups.values.sumOf { it.size }) { "Duplicated alias in 'sessionGroups'" }
+    }
+
+    private fun <T> Sequence<T>.noDuplicates(): Boolean {
+        val seen: MutableSet<T> = hashSetOf()
+        return all { seen.add(it) }
+    }
+}
 
 enum class ResetOffset {
     NONE,
