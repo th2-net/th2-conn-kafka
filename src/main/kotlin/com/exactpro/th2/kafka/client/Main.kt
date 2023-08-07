@@ -31,7 +31,6 @@ import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.GroupBatch
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.common.utils.message.transport.logId
