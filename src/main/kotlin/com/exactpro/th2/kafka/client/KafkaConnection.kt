@@ -59,11 +59,12 @@ class KafkaConnection(
     fun publish(message: RawMessage) {
         val alias = message.sessionAlias ?: error("Message '${message.id.logId}' does not contain session alias.")
         val value = message.body.toByteArray()
-        val bookConfig = config.booksConfigs[message.bookName] ?: config.defaultBookConfig
+
+        val originalBook = message.bookName.ifEmpty { null }
         val messageIdBuilder = message.id.toBuilder().apply {
             direction = Direction.SECOND
-            bookName = message.bookName
-            setConnectionId(connectionIdBuilder.setSessionGroup(bookConfig.aliasToSessionGroup.getValue(alias)))
+            bookName = originalBook ?: factory.boxConfiguration.bookName
+            setConnectionId(connectionIdBuilder.setSessionGroup(config.bookAndAliasToGroup.getValue(originalBook to alias)))
         }
 
         val messageFuture = CompletableFuture<RawMessage>()
@@ -74,10 +75,11 @@ class KafkaConnection(
             messageFuture::complete
         )
 
-        val kafkaStream = bookConfig.aliasToTopicAndKey[alias]
+        val kafkaStream = config.bookAndAliasToTopic[originalBook to alias] ?: error("Session alias '$alias' in book '$originalBook' not found.")
+
         val kafkaRecord = ProducerRecord<String, ByteArray>(
-            kafkaStream?.topic ?: bookConfig.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."),
-            message.metadata.propertiesMap[METADATA_KEY] ?: kafkaStream?.key,
+            kafkaStream.topic,
+            message.metadata.propertiesMap[METADATA_KEY] ?: kafkaStream.key,
             value
         )
 
@@ -180,16 +182,14 @@ class KafkaConnection(
                     if (record.topic() in topicsToSkip) continue
 
                     val (book, alias) = config.topicToBookAndAlias[record.topic()]
-                        ?: config.topicAndKeyToBookAndAlias[KafkaStream(record.topic(), record.key(), true)]
+                        ?: config.topicAndKeyToBookAndAlias[KafkaStream(record.topic(), record.key())]
                         ?: continue
-
-                    val bookConfig = config.booksConfigs[book] ?: config.defaultBookConfig
 
                     val messageID = factory.newMessageIDBuilder()
                         .setConnectionId(
                             ConnectionID.newBuilder()
                                 .setSessionAlias(alias)
-                                .setSessionGroup(bookConfig.aliasToSessionGroup.getValue(alias))
+                                .setSessionGroup(config.bookAndAliasToGroup.getValue(book to alias))
                         )
                         .setDirection(Direction.FIRST)
 

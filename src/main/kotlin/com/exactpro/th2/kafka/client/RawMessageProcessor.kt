@@ -1,8 +1,25 @@
+/*
+ * Copyright 2023 Exactpro (Exactpro Systems Limited)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.grpc.RawMessageBatch
+import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.common.message.sessionAlias
@@ -34,8 +51,8 @@ class RawMessageProcessor(
     private val batchFlusherExecutor = Executors.newSingleThreadScheduledExecutor()
 
     private val messageReceiverThread = thread(name = "message-receiver") {
-        val counters: MutableMap<Pair<String, Direction>, () -> Long> = HashMap()
-        val builders: MutableMap<String, BatchHolder> = HashMap()
+        val counters: MutableMap<Triple<String, String, Direction>, () -> Long> = HashMap()
+        val builders: MutableMap<Pair<String, String>, BatchHolder> = HashMap()
 
         while (true) {
             val messageAndCallback = messageQueue.take()
@@ -46,7 +63,7 @@ class RawMessageProcessor(
                 timestamp = Instant.now().toTimestamp()
                 sequence = when (messageBuilder.direction) {
                     Direction.FIRST, Direction.SECOND -> {
-                        val counter = counters.getOrPut(messageBuilder.sessionAlias to messageBuilder.direction) {
+                        val counter = counters.getOrPut(Triple(bookName, messageBuilder.sessionAlias, messageBuilder.direction)) {
                             createSequence()
                         }
                         counter()
@@ -55,10 +72,11 @@ class RawMessageProcessor(
                 }
             }
 
+            check(messageBuilder.bookName.isNotEmpty()) { "bookName should be assigned to all messages" }
             val sessionGroup: String = checkNotNull(messageBuilder.sessionGroup) { "sessionGroup should be assigned to all messages" }
             val message = messageBuilder.build()
             onMessageBuilt(message)
-            builders.getOrPut(sessionGroup, ::BatchHolder).addMessage(message)
+            builders.getOrPut(messageBuilder.bookName to sessionGroup, ::BatchHolder).addMessage(message)
         }
 
         builders.values.forEach(BatchHolder::enqueueBatch)

@@ -91,7 +91,7 @@ fun main(args: Array<String>) {
                 LOGGER.trace { "Message ${message.id.logId} extracted from batch." }
 
                 val bookName = message.bookName
-                if (bookName.isNotEmpty() && bookName != factory.boxConfiguration.bookName) {
+                if (bookName.isNotEmpty() && bookName != factory.boxConfiguration.bookName && !config.books.contains(bookName)) {
                     val errorText = "Expected bookName: '${factory.boxConfiguration.bookName}', actual '$bookName' in message ${message.id.logId}"
                     LOGGER.error { errorText }
                     eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED)
