@@ -89,6 +89,7 @@ class RawMessageProcessorTest {
                                     )
                             )
                     )
+                msgBuilder.sessionAlias = msgBuilder.sessionGroup
                 batcher.onMessage(msgBuilder)
                 Thread.sleep(sendInterval)
             }

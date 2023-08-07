@@ -194,9 +194,11 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
                         emptyMap()
                     }
 
-                    val builder = prepareIncomingMessage(alias, record, metadataFields)
-                    messageAcceptor.onMessage(builder)
-                 }
+                    messageProcessor.onMessage(RawMessage.newBuilder()
+                        .setMetadata(RawMessageMetadata.newBuilder().setId(messageID))
+                        .setBody(UnsafeByteOperations.unsafeWrap(record.value()))
+                    )
+                }
             }
 
             consumer.commitAsync { offsets: Map<TopicPartition, OffsetAndMetadata>, exception: Exception? ->

@@ -191,6 +191,65 @@ class Config(
     @JsonProperty(SaslConfigs.SASL_JAAS_CONFIG)
     val kafkaSaslJaasConfig: String? = null,
 
+    /**
+     * Generate TH2 event on successful message publishing
+     */
+    val messagePublishingEvents: Boolean = false,
+
+    /**
+     * Add extra metadata to messages (like topic, key. offset, original timestamp ...)
+     */
+    val addExtraMetadata: Boolean = false,
+
+    /**
+     * Auto offset reset policy. Possible values: "latest" (default), "earliest"
+     */
+    @JsonProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG)
+    val kafkaAutoOffsetReset: String = "latest",
+
+    val offsetResetOnStart: ResetOffset = ResetOffset.NONE,
+    val offsetResetTimeMs: Long = 0,
+    val offsetResetMessage: Long = 0,
+
+    /**
+     * Protocol used to communicate with brokers
+     */
+    @JsonProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG)
+    val kafkaSecurityProtocol: String? = null,
+
+    /**
+     * The location of the trust store file
+     */
+    @JsonProperty(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG)
+    val kafkaSecurityTruststoreLocation: String? = null,
+
+    /**
+     * The password for the trust store file
+     */
+    @JsonProperty(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG)
+    val kafkaSecurityTruststorePassword: String? = null,
+
+    /**
+     * The Kerberos principal name that Kafka runs as
+     */
+    @JsonProperty(SaslConfigs.SASL_KERBEROS_SERVICE_NAME)
+    val kafkaSaslKerberosServiceName: String? = null,
+
+    /**
+     * SASL mechanism used for client connections
+     */
+    @JsonProperty(SaslConfigs.SASL_MECHANISM)
+    val kafkaSaslMechanism: String? = null,
+
+    /**
+     * JAAS login context parameters for SASL connections in the format used by JAAS configuration files
+     */
+    @JsonProperty(SaslConfigs.SASL_JAAS_CONFIG)
+    val kafkaSaslJaasConfig: String? = null,
+
+    val extraConsumerProps: Map<String, String> = emptyMap(),
+    val extraProducerProps: Map<String, String> = emptyMap(),
+
     val createTopics: Boolean = false,
     val topicsToCreate: List<String> = emptyList(),
     val newTopicsPartitions: Int = 1,

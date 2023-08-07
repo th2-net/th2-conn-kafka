@@ -124,6 +124,7 @@ spec:
 + Added extra metadata to messages received from Kafka
 
 ### 0.1.1
+
 + bump library versions
 
 ### 0.1.0

@@ -42,6 +42,7 @@ class KafkaClientsFactory(private val config: Config) {
             put(ConsumerConfig.RECONNECT_BACKOFF_MS_CONFIG, config.reconnectBackoffMs)
             put(ConsumerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, config.reconnectBackoffMaxMs)
             put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, config.kafkaAutoOffsetReset)
+            config.extraConsumerProps.forEach { put(it.key, it.value) }
             addSecuritySettings()
         }
     )
@@ -55,6 +56,7 @@ class KafkaClientsFactory(private val config: Config) {
             put(ProducerConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, config.reconnectBackoffMaxMs)
             put(ProducerConfig.BATCH_SIZE_CONFIG, config.kafkaBatchSize)
             put(ProducerConfig.LINGER_MS_CONFIG, config.kafkaLingerMillis)
+            config.extraProducerProps.forEach { put(it.key, it.value) }
             addSecuritySettings()
         }
     )
