@@ -25,7 +25,6 @@ import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.*
 import com.exactpro.th2.common.utils.message.direction
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
-import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.common.utils.message.transport.logId
 import mu.KotlinLogging
@@ -107,7 +106,6 @@ abstract class RawMessageProcessor<BATCH, BATCH_BUILDER, MESSAGE, MESSAGE_BUILDE
             batchBuilder.addMessage(message)
             LOGGER.trace { "Message ${message.logId} added to batch." }
             when (batchBuilder.size) {
-                maxBatchSize -> enqueueBatch()
                 maxBatchSize -> enqueueBatch()
                 1 -> flusherFuture = batchFlusherExecutor.schedule(::enqueueBatch, maxFlushTime, maxFlushTimeUnit)
             }

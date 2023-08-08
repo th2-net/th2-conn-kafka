@@ -89,7 +89,6 @@ class RawMessageProcessorTest {
                                     )
                             )
                     )
-                msgBuilder.sessionAlias = msgBuilder.sessionGroup
                 batcher.onMessage(msgBuilder)
                 Thread.sleep(sendInterval)
             }
@@ -123,7 +122,7 @@ class RawMessageProcessorTest {
             batch.messagesList.forEach { message ->
 
                 // verify proper grouping
-                assertThat(message.metadata.id.connectionId.sessionGroup)
+                assertThat(message.sessionGroup)
                     .describedAs("Wrong session alias group")
                     .isEqualTo(sessionGroup)
 

@@ -65,6 +65,7 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
     protected abstract val MESSAGE.logId: String
     protected abstract val MESSAGE.messageSessionAlias: String
     protected abstract val MESSAGE.rawBody: ByteArray
+    protected abstract val MESSAGE.metadataFields: Map<String, String>
     protected abstract fun MESSAGE.toProtoMessageId(sessionGroup: String): ProtoMessageID?
     protected abstract fun prepareOutgoingMessage(messageToSend: MESSAGE, book: String): MESSAGE_BUILDER
     protected abstract fun prepareIncomingMessage(alias: String, record: ConsumerRecord<String?, ByteArray>, metadataFields: Map<String, String>): MESSAGE_BUILDER
@@ -79,7 +80,7 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
 
         val value = message.rawBody
         val kafkaStream = config.aliasToTopicAndKey[alias] ?: KafkaStream(config.aliasToTopic[alias]?.topic ?: error("Session alias '$alias' not found."), null)
-        val kafkaRecord = ProducerRecord<String, ByteArray>(kafkaStream.topic, kafkaStream.key, value)
+        val kafkaRecord = ProducerRecord<String, ByteArray>(kafkaStream.topic, message.metadataFields[METADATA_KEY] ?: kafkaStream.key, value)
         producer.send(kafkaRecord) { _, exception: Throwable? ->
             val (outMessage, sessionGroup) = messageFuture.get()
             if (exception == null) {
@@ -276,6 +277,7 @@ class ProtoKafkaConnection(
     override val ProtoRawMessage.logId: String get() = id.logId
     override val ProtoRawMessage.messageSessionAlias: String get() = id.connectionId.sessionAlias.apply { if (isEmpty()) error("Message '${logId}' does not contain session alias.") }
     override val ProtoRawMessage.rawBody: ByteArray get() = body.toByteArray()
+    override val ProtoRawMessage.metadataFields: Map<String, String> get() = this.metadata.propertiesMap
     override fun ProtoRawMessage.toProtoMessageId(sessionGroup: String): ProtoMessageID = id
 
     override fun prepareOutgoingMessage(messageToSend: ProtoRawMessage, book: String): ProtoRawMessage.Builder {
@@ -317,6 +319,7 @@ class TransportKafkaConnection(
     override val RawMessage.logId: String get() = id.logId
     override val RawMessage.messageSessionAlias: String get() = id.sessionAlias
     override val RawMessage.rawBody: ByteArray get() = body.toByteArray()
+    override val RawMessage.metadataFields: Map<String, String> get() = this.metadata
     override fun RawMessage.toProtoMessageId(sessionGroup: String): ProtoMessageID = id.toProto(bookName, sessionGroup)
 
     override fun prepareOutgoingMessage(messageToSend: RawMessage, book: String): RawMessage.Builder = RawMessage.builder()
