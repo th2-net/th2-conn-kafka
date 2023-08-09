@@ -17,17 +17,11 @@
 package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.grpc.MessageID as ProtoMessageID
-import com.exactpro.th2.common.grpc.ConnectionID as ProtoConnectionID
-import com.exactpro.th2.common.grpc.Direction as ProtoDirection
-import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
-import com.exactpro.th2.common.grpc.RawMessageMetadata as ProtoRawMessageMetadata
-import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Direction
-import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageId
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.toByteArray
+import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.common.utils.message.transport.logId
 import com.exactpro.th2.common.utils.message.transport.toProto
@@ -49,6 +43,11 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Collections
 import java.util.concurrent.CompletableFuture
+import com.exactpro.th2.common.grpc.ConnectionID as ProtoConnectionID
+import com.exactpro.th2.common.grpc.Direction as ProtoDirection
+import com.exactpro.th2.common.grpc.MessageID as ProtoMessageID
+import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
+import com.exactpro.th2.common.grpc.RawMessageMetadata as ProtoRawMessageMetadata
 
 abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
     private val config: Config,
@@ -331,13 +330,11 @@ class TransportKafkaConnection(
         alias: String,
         record: ConsumerRecord<String?, ByteArray>,
         metadataFields: Map<String, String>
-    ): RawMessage.Builder = RawMessage.builder()
-        .setId(
-            MessageId.builder()
-                .setDirection(Direction.INCOMING)
-                .setSessionAlias(alias)
-                .build()
-        )
-        .setMetadata(metadataFields)
-        .setBody(record.value())
+    ): RawMessage.Builder = RawMessage.builder().apply {
+        idBuilder()
+            .setDirection(Direction.INCOMING)
+            .setSessionAlias(alias)
+        setMetadata(metadataFields)
+        setBody(record.value())
+    }
 }
