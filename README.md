@@ -9,14 +9,14 @@ This configuration should be specified in the custom configuration block in sche
 
     topics:
       publish:
-        - topic_01:
-            key: "key_01"
-            sessionAlias: "alias_01"
-            sessionGroup: "group_01"
-            book: "book_01"
+        - topic: "topic_01"
+          key: "key_01"
+          sessionAlias: "alias_01"
+          sessionGroup: "group_01"
+          book: "book_01"
       subscribe:
-        - topic_02:
-            sessionAlias: "alias_02"
+        - topic: "topic_02"
+          sessionAlias: "alias_02"
 
     defaultSessionGroup: "session_alias_group_02"
 
@@ -38,6 +38,11 @@ This configuration should be specified in the custom configuration block in sche
 
 Parameters:
 + topics - matches topics or topics+keys (separately for publishing and subscription) to th2 books, sessions and session groups
+  + topic (required)
+  + key (default - any key will match)
+  + book (default - use box bookName)
+  + sessionAlias (required)
+  + sessionGroup (default - use default defaultSessionGroup)
 + defaultSessionGroup - this session group will be set for sessions not mentioned in `sessionGroups`
 + groupId - that ID will be used for Kafka connection
 + bootstrapServers - URL of one of the Kafka brokers which you give to fetch the initial metadata about your Kafka cluster

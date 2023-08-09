@@ -51,8 +51,12 @@ class RawMessageProcessor(
     private val batchFlusherExecutor = Executors.newSingleThreadScheduledExecutor()
 
     private val messageReceiverThread = thread(name = "message-receiver") {
-        val counters: MutableMap<Triple<String, String, Direction>, () -> Long> = HashMap()
-        val builders: MutableMap<Pair<String, String>, BatchHolder> = HashMap()
+
+        data class CounterId(val bookName: String, val sessionAlias: String, val direction: Direction)
+        data class BuilderId(val bookName: String, val sessionAlias: String)
+
+        val counters: MutableMap<CounterId, () -> Long> = HashMap()
+        val builders: MutableMap<BuilderId, BatchHolder> = HashMap()
 
         while (true) {
             val messageAndCallback = messageQueue.take()
@@ -63,7 +67,7 @@ class RawMessageProcessor(
                 timestamp = Instant.now().toTimestamp()
                 sequence = when (messageBuilder.direction) {
                     Direction.FIRST, Direction.SECOND -> {
-                        val counter = counters.getOrPut(Triple(bookName, messageBuilder.sessionAlias, messageBuilder.direction)) {
+                        val counter = counters.getOrPut(CounterId(bookName, messageBuilder.sessionAlias, messageBuilder.direction)) {
                             createSequence()
                         }
                         counter()
@@ -76,7 +80,7 @@ class RawMessageProcessor(
             val sessionGroup: String = checkNotNull(messageBuilder.sessionGroup) { "sessionGroup should be assigned to all messages" }
             val message = messageBuilder.build()
             onMessageBuilt(message)
-            builders.getOrPut(messageBuilder.bookName to sessionGroup, ::BatchHolder).addMessage(message)
+            builders.getOrPut(BuilderId(messageBuilder.bookName, sessionGroup), ::BatchHolder).addMessage(message)
         }
 
         builders.values.forEach(BatchHolder::enqueueBatch)
