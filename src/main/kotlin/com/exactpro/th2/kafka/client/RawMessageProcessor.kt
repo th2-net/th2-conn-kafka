@@ -251,12 +251,8 @@ class TransportRawMessageProcessor(
             else -> error("Unrecognized direction")
         }
 
-        this.setId(
-            idBuilder
-                .setTimestamp(Instant.now())
-                .setSequence(sequence)
-                .build()
-        )
+        idBuilder.setTimestamp(Instant.now())
+            .setSequence(sequence)
 
         return build()
     }
