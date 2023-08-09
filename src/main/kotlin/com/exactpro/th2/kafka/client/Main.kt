@@ -75,10 +75,15 @@ fun main(args: Array<String>) {
             val messageProcessor = TransportRawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit, factory.boxConfiguration.bookName, config.aliasToSessionGroup) {
                 LOGGER.trace { "Sending batch with ${it.groups.size} groups to MQ." }
                 it.runCatching(transportRouter::send).onFailure { e -> LOGGER.error(e) { "Could not send message batch to MQ: $it" } }
-            }.apply { resources += "message processor" to ::close }
+            }.apply { resources += "transport message processor" to ::close }
 
             val connection = TransportKafkaConnection(config, factory, messageProcessor, eventSender, KafkaClientsFactory(config))
-                .apply { resources += "kafka connection" to ::close }
+                .apply { resources += "transport kafka connection" to ::close }
+
+            Executors.newSingleThreadExecutor().apply {
+                resources += "transport connection executor" to { this.shutdownNow() }
+                execute(connection)
+            }
 
             val transportListener: (DeliveryMetadata, GroupBatch) -> Unit = { metadata, batch ->
                 LOGGER.trace { "Transport batch with ${batch.groups.size} groups received from MQ"}
@@ -119,17 +124,17 @@ fun main(args: Array<String>) {
                         it.messagesOrBuilderList
                         "Could not send message batch to MQ: ${it.toJson()}" }
                     }
-            }.apply { resources += "message processor" to ::close }
+            }.apply { resources += "proto message processor" to ::close }
 
             val connection = ProtoKafkaConnection(config, factory, messageProcessor, eventSender, KafkaClientsFactory(config))
-                    .apply { resources += "kafka connection" to ::close }
+                    .apply { resources += "proto kafka connection" to ::close }
+
+            Executors.newSingleThreadExecutor().apply {
+                resources += "proto connection executor" to { this.shutdownNow() }
+                execute(connection)
+            }
 
             val protoListener: (DeliveryMetadata, ProtoRawMessageBatch) -> Unit = { metadata, batch ->
-
-                Executors.newSingleThreadExecutor().apply {
-                    resources += "executor service" to { this.shutdownNow() }
-                    execute(connection)
-                }
 
                 LOGGER.trace { "Proto batch with ${batch.messagesCount} messages received from MQ" }
                 for (message in batch.messagesList) {
