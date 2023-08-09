@@ -19,6 +19,7 @@
 package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.event.IBodyData
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.RawMessage
@@ -91,10 +92,10 @@ fun main(args: Array<String>) {
                 LOGGER.trace { "Message ${message.id.logId} extracted from batch." }
 
                 val bookName = message.bookName
-                if (bookName.isNotEmpty() && bookName != factory.boxConfiguration.bookName) {
+                if (bookName.isNotEmpty() && bookName != factory.boxConfiguration.bookName && !config.books.contains(bookName)) {
                     val errorText = "Expected bookName: '${factory.boxConfiguration.bookName}', actual '$bookName' in message ${message.id.logId}"
                     LOGGER.error { errorText }
-                    eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED)
+                    eventSender.onEvent(errorText, "Error", message, status = Event.Status.FAILED, parentEventId = message.parentEventId)
                     continue
                 }
 
@@ -103,7 +104,7 @@ fun main(args: Array<String>) {
                 }.onFailure {
                     val errorText = "Could not publish message ${message.id.logId}. Consumer tag ${metadata.consumerTag}"
                     LOGGER.error(it) { errorText }
-                    eventSender.onEvent(errorText, "SendError", message, it)
+                    eventSender.onEvent(errorText, "SendError", message, it, parentEventId = message.parentEventId)
                 }
             }
         }

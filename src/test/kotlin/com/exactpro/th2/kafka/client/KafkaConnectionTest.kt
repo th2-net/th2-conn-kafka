@@ -56,14 +56,14 @@ class KafkaConnectionTest {
         on { isEmpty } doReturn false
         on { iterator() } doReturn mutableListOf(
             ConsumerRecord(
-                "topic_03",
+                "topic_02",
                 0,
                 0,
                 Instant.now().toEpochMilli(),
                 null,
                 0,
                 0,
-                "key_03",
+                "key_02",
                 testMessageText.toByteArray(),
                 mock(),
                 null
@@ -83,9 +83,14 @@ class KafkaConnectionTest {
 
     private val connection = KafkaConnection(
         Config(
-            aliasToTopic = mapOf("alias_01" to KafkaTopic("topic_01"), "alias_02" to KafkaTopic("topic_02")),
-            aliasToTopicAndKey = mapOf("alias_03" to KafkaStream("topic_03", "key_03", true)),
-            sessionGroups = mapOf("group_01" to listOf("alias_01")),
+            topics = Topics(
+                publish = listOf(
+                    TopicConfig(topic = "topic_01", sessionAlias = "alias_01", sessionGroup = "group_01", book = "input_book_01"),
+                ),
+                subscribe = listOf(
+                    TopicConfig(topic = "topic_02", sessionAlias = "alias_02", key = "key_02")
+                )
+            ),
             messagePublishingEvents = true
         ),
         commonFactory,
@@ -99,6 +104,7 @@ class KafkaConnectionTest {
         val testMessage = RawMessage.newBuilder()
             .setBody(UnsafeByteOperations.unsafeWrap(testMessageText.toByteArray())).apply {
                 sessionAlias = "alias_01"
+                bookName = "input_book_01"
             }
             .build()
 
@@ -109,7 +115,7 @@ class KafkaConnectionTest {
         verify(messageProcessor, only()).onMessage(messageBuilderCaptor.capture(), processorCallbackCaptor.capture())
 
         val outMessage = messageBuilderCaptor.firstValue.build()
-        assertThat(outMessage.bookName).isEqualTo("book_01")
+        assertThat(outMessage.bookName).isEqualTo("input_book_01")
         assertThat(outMessage.sessionAlias).isEqualTo("alias_01")
         assertThat(outMessage.sessionGroup).isEqualTo("group_01")
         assertThat(outMessage.direction).isEqualTo(Direction.SECOND)
@@ -155,8 +161,8 @@ class KafkaConnectionTest {
 
         val messageBuilder = messageBuilderCaptor.firstValue
         assertThat(messageBuilder.bookName).isEqualTo("book_01")
-        assertThat(messageBuilder.sessionAlias).isEqualTo("alias_03")
-        assertThat(messageBuilder.sessionGroup).isEqualTo("alias_03") // if no group name provided sessionAlias is used as group name
+        assertThat(messageBuilder.sessionAlias).isEqualTo("alias_02")
+        assertThat(messageBuilder.sessionGroup).isEqualTo("alias_02") // if no group name provided sessionAlias is used as group name
         assertThat(messageBuilder.direction).isEqualTo(Direction.FIRST)
         assertThat(messageBuilder.body.toStringUtf8()).isEqualTo(testMessageText)
     }
