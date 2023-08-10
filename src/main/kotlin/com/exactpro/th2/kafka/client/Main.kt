@@ -162,13 +162,9 @@ fun main(args: Array<String>) {
             { messageRouterRawBatch.subscribeAll(protoListener, INPUT_QUEUE_ATTRIBUTE) }
         }
 
-        runCatching {
-            subscribe()
-        }.onSuccess {
-            resources += "queue listener" to it::unsubscribe
-        }.onFailure {
-            throw IllegalStateException("Failed to subscribe to input queue", it)
-        }
+        runCatching(subscribe)
+            .onSuccess { resources += "queue listener" to it::unsubscribe }
+            .onFailure { throw IllegalStateException("Failed to subscribe to input queue", it) }
     }.onFailure {
         LOGGER.error(it) { "Error during working with Kafka connection. Exiting the program" }
         exitProcess(2)

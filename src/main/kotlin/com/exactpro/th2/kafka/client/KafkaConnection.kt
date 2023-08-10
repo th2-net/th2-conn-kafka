@@ -37,6 +37,7 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.clients.producer.Producer
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.errors.InterruptException
 import org.apache.kafka.common.errors.TimeoutException
 import java.io.Closeable
 import java.time.Duration
@@ -209,11 +210,14 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
         }
     } catch (e: InterruptedException) {
         LOGGER.info("Polling thread interrupted")
+    } catch (e: InterruptException) {
+        LOGGER.info("Polling thread interrupted")
     } catch (e: Exception) {
         val errorMessage = "Failed to read messages from Kafka"
         LOGGER.error(errorMessage, e)
         eventSender.onEvent(errorMessage, "Error", exception = e)
     } finally {
+        Thread.interrupted()
         consumer.wakeup()
         consumer.close()
     }
