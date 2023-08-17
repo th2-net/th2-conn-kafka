@@ -6,7 +6,7 @@ This configuration should be specified in the custom configuration block in sche
 
 ```yaml
   customConfig:
-
+    useTransport: true
     aliasToTopic:
       session_alias_01:
         topic: "topic_01"
@@ -46,6 +46,7 @@ This configuration should be specified in the custom configuration block in sche
 ```
 
 Parameters:
++ useTransport - use th2 transport or protobuf protocol to publish incoming/outgoing messages (false by default)
 + aliasToTopic - matches th2 sessions with Kafka topics **Note: Kafka does not guarantee message ordering within topic if topic contains more than one partition**
 + aliasToTopicAndKey - matches th2 sessions with Kafka topics and keys **Note: Kafka guarantees message ordering only within messages with the same non null key if topic contains more than one partition**
 + sessionGroups - match session group with sessions (key: session group, value: list of session aliases)
@@ -92,12 +93,14 @@ Messages that were received from / sent to the Kafka will be sent to the `out_ra
 
 Example of pins configuration:
 
+protobuf
 ```yaml
 spec:
   imageName: ghcr.io/th2-net/th2-conn-kafka
   imageVersion: 0.3.0
   type: th2-conn
-
+  customConfig:
+    useTransport: false
   pins:
     mq:
       subscribers:
@@ -110,6 +113,28 @@ spec:
       publishers:
         - name: out_raw
           attributes: ["raw", "publish", "store"]
+```
+
+th2 transport
+```yaml
+spec:
+  imageName: ghcr.io/th2-net/th2-conn-kafka
+  imageVersion: 0.3.0
+  type: th2-conn
+  customConfig:
+    useTransport: true
+  pins:
+    mq:
+      subscribers:
+        - name: to_send
+          attributes: ["send", "transport-group", "subscribe"]
+          linkTo:
+            - box: script
+              pin: to_conn
+
+      publishers:
+        - name: out_raw
+          attributes: ["transport-group", "publish"]
 ```
 
 ## Release notes
