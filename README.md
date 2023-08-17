@@ -116,6 +116,9 @@ spec:
 
 ### 0.3.0
 + TH2 transport protocol support
+  Updated bom: `4.5.0`
++ Updated common: `5.4.0-dev`
++ Updated common-utils: `2.1.1-dev`
 
 ### 0.2.0
 + Secure connection support
