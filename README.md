@@ -119,6 +119,7 @@ spec:
   Updated bom: `4.5.0`
 + Updated common: `5.4.0-dev`
 + Updated common-utils: `2.1.1-dev`
++ Updated kafka-clients: `3.5.1`
 
 ### 0.2.0
 + Secure connection support
