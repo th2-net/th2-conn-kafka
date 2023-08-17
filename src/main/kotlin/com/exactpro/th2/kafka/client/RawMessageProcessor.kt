@@ -61,7 +61,6 @@ abstract class RawMessageProcessor<BATCH, BATCH_BUILDER, MESSAGE, MESSAGE_BUILDE
     protected abstract fun BATCH_BUILDER.addMessage(message: MESSAGE): BATCH_BUILDER
     protected abstract val BATCH_BUILDER.size: Int
     protected abstract fun BATCH_BUILDER.buildBatch(): BATCH
-    protected abstract fun BATCH_BUILDER.clearBatch()
     protected abstract val MESSAGE.logId: String
     protected abstract val MESSAGE_BUILDER.builderSessionAlias: String
     protected abstract fun MESSAGE_BUILDER.completeBuilding(counters: MutableMap<Pair<String, Direction>, () -> Long>, sessionGroup: String): MESSAGE
@@ -96,9 +95,9 @@ abstract class RawMessageProcessor<BATCH, BATCH_BUILDER, MESSAGE, MESSAGE_BUILDE
     }
 
     inner class BatchHolder(
-        sessionGroup: String
+        private val sessionGroup: String
     ) {
-        private val batchBuilder: BATCH_BUILDER = newBatchBuilder(sessionGroup)
+        private var batchBuilder: BATCH_BUILDER = newBatchBuilder(sessionGroup)
         private var flusherFuture: Future<*> = CompletableFuture.completedFuture(null)
         private val lock: Lock = ReentrantLock()
 
@@ -115,7 +114,7 @@ abstract class RawMessageProcessor<BATCH, BATCH_BUILDER, MESSAGE, MESSAGE_BUILDE
             if (batchBuilder.size > 0) {
                 flusherFuture.cancel(false)
                 batchQueue.add(batchBuilder.buildBatch())
-                batchBuilder.clearBatch()
+                batchBuilder = newBatchBuilder(sessionGroup)
             }
         }
     }
@@ -180,10 +179,6 @@ class ProtoRawMessageProcessor(
     override val ProtoRawMessage.Builder.builderSessionAlias: String get() = id.connectionId.sessionAlias
     override fun ProtoRawMessageBatch.Builder.addMessage(message: ProtoRawMessage): RawMessageBatch.Builder = addMessages(message)
 
-    override fun ProtoRawMessageBatch.Builder.clearBatch() {
-        this.clear()
-    }
-
     override fun ProtoRawMessage.Builder.completeBuilding(counters: MutableMap<Pair<String, Direction>, () -> Long>, sessionGroup: String): ProtoRawMessage{
         val messageBuilder = this
         metadataBuilder.idBuilder.apply {
@@ -227,10 +222,6 @@ class TransportRawMessageProcessor(
     override fun GroupBatch.Builder.addMessage(message: RawMessage) = addGroup(MessageGroup(listOf(message)))
     override val GroupBatch.Builder.size: Int get() = this.groupsBuilder().size
     override fun GroupBatch.Builder.buildBatch(): GroupBatch = build()
-
-    override fun GroupBatch.Builder.clearBatch() {
-        this.setGroups(mutableListOf())
-    }
 
     override val RawMessage.logId: String get() = id.logId
     override val RawMessage.Builder.builderSessionAlias: String get() = this.idBuilder().sessionAlias
