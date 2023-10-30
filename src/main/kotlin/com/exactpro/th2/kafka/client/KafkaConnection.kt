@@ -139,6 +139,8 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
             }
         }
 
+        val lastTopicOffset = hashMapOf<String, TopicOffsets>()
+
         while (!Thread.currentThread().isInterrupted) {
             val records: ConsumerRecords<String?, ByteArray> = consumer.poll(pollTimeout)
 
@@ -165,6 +167,9 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
 
             val topicsToSkip: MutableSet<String> = HashSet()
             for (record in records) {
+                val topicOffsets: TopicOffsets = lastTopicOffset.computeIfAbsent(record.topic(), ::createTopicOffsets)
+                topicOffsets.updateOffset(record.partition(), record.offset())
+
                 val inactivityPeriod = startTimestamp - record.timestamp()
                 if (inactivityPeriod > config.maxInactivityPeriodDuration.inWholeMilliseconds) {
                     val topicToSkip = record.topic()
@@ -173,6 +178,11 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
                         consumer.partitionsFor(topicToSkip).map { TopicPartition(topicToSkip, it.partition()) }
                     )
                     val msgText = "Inactivity period exceeded ($inactivityPeriod ms). Skipping unread messages in '$topicToSkip' topic."
+
+                    // Remove information for topic because we seek offset to the end
+                    // Gaps are expected in this case
+                    lastTopicOffset.remove(record.topic())
+
                     LOGGER.info { msgText }
                     eventSender.onEvent(msgText, CONNECTIVITY_EVENT_TYPE)
                 } else {
@@ -223,6 +233,28 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
     }
 
     override fun close() = producer.close()
+
+    private fun createTopicOffsets(topic: String) =
+        TopicOffsets { partition, prevOffset, newOffset ->
+            eventSender.onEvent(
+                name = "Gap detected for topic '$topic' in partition '$partition' between $prevOffset and $newOffset",
+                type = "KafkaOffsetGap",
+                status = Event.Status.FAILED,
+            )
+        }
+
+    private class TopicOffsets(
+        private val onGap: (partition: Int, prevOffset: Long, newOffset: Long) -> Unit,
+    ) {
+        private val offsetByPartition = hashMapOf<Int, Long>()
+
+        fun updateOffset(partition: Int, offset: Long) {
+            val prevOffset = offsetByPartition.put(partition, offset) ?: return
+            if (prevOffset + 1L != offset) {
+                onGap(partition, prevOffset, offset)
+            }
+        }
+    }
 
     companion object {
         private val LOGGER = KotlinLogging.logger {}

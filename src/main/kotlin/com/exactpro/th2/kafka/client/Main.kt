@@ -35,6 +35,7 @@ import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.common.utils.message.transport.logId
 import com.exactpro.th2.common.utils.message.transport.toProto
+import com.exactpro.th2.common.utils.shutdownGracefully
 import mu.KotlinLogging
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
@@ -223,7 +224,6 @@ class EventSender(
 
     override fun close() {
         eventBatcher.close()
-        batchSenderExecutor.shutdown()
-        batchSenderExecutor.awaitTermination(10, TimeUnit.SECONDS)
+        batchSenderExecutor.shutdownGracefully(timeout = 10, unit = TimeUnit.SECONDS)
     }
 }
