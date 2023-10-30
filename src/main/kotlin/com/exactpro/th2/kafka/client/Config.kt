@@ -191,10 +191,15 @@ class Config(
     @JsonProperty(SaslConfigs.SASL_JAAS_CONFIG)
     val kafkaSaslJaasConfig: String? = null,
 
+    val extraConsumerProps: Map<String, String> = emptyMap(),
+    val extraProducerProps: Map<String, String> = emptyMap(),
+
     val createTopics: Boolean = false,
     val topicsToCreate: List<String> = emptyList(),
     val newTopicsPartitions: Int = 1,
-    val newTopicsReplicationFactor: Short = 1
+    val newTopicsReplicationFactor: Short = 1,
+
+    val useTransport: Boolean = false
 ) {
     @JsonIgnore
     val maxInactivityPeriodDuration: Duration = maxInactivityPeriodUnit.toMillis(maxInactivityPeriod).toDuration(DurationUnit.MILLISECONDS)

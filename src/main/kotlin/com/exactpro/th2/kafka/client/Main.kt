@@ -20,17 +20,22 @@ package com.exactpro.th2.kafka.client
 
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventBatch
-import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.grpc.RawMessageBatch
+import com.exactpro.th2.common.grpc.EventID as ProtoEventID
+import com.exactpro.th2.common.grpc.MessageID as ProtoMessageID
+import com.exactpro.th2.common.grpc.RawMessageBatch as ProtoRawMessageBatch
 import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.factory.CommonFactory
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
 import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.GroupBatch
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
+import com.exactpro.th2.common.utils.message.transport.logId
+import com.exactpro.th2.common.utils.message.transport.toProto
+import com.exactpro.th2.common.utils.shutdownGracefully
 import mu.KotlinLogging
 import java.util.Deque
 import java.util.concurrent.ConcurrentLinkedDeque
@@ -63,58 +68,104 @@ fun main(args: Array<String>) {
 
     runCatching {
         val config: Config = factory.getCustomConfiguration(Config::class.java)
-        val messageRouterRawBatch = factory.messageRouterRawBatch
-
-        val messageProcessor = RawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit) {
-            LOGGER.trace { "Sending batch with ${it.messagesCount} messages to MQ." }
-            it.runCatching(messageRouterRawBatch::send)
-                .onFailure { e -> LOGGER.error(e) {
-                    it.messagesOrBuilderList
-                    "Could not send message batch to MQ: ${it.toJson()}" }
-                }
-        }.apply { resources += "message processor" to ::close }
-
         val eventSender = EventSender(factory.eventBatchRouter, factory.rootEventId, config)
-
         if (config.createTopics) KafkaConnection.createTopics(config)
-        val connection = KafkaConnection(config, factory, messageProcessor, eventSender, KafkaClientsFactory(config))
-            .apply { resources += "kafka connection" to ::close }
 
-        Executors.newSingleThreadExecutor().apply {
-            resources += "executor service" to { this.shutdownNow() }
-            execute(connection)
-        }
+        val subscribe = if (config.useTransport) {
+            val transportRouter = factory.transportGroupBatchRouter
+            val messageProcessor = TransportRawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit, factory.boxConfiguration.bookName, config.aliasToSessionGroup) {
+                LOGGER.trace { "Sending batch with ${it.groups.size} groups to MQ." }
+                it.runCatching(transportRouter::send).onFailure { e -> LOGGER.error(e) { "Could not send message batch to MQ: $it" } }
+            }.apply { resources += "transport message processor" to ::close }
 
-        val mqListener: (DeliveryMetadata, RawMessageBatch) -> Unit = { metadata, batch ->
-            LOGGER.trace { "Batch with ${batch.messagesCount} messages received from MQ"}
-            for (message in batch.messagesList) {
-                LOGGER.trace { "Message ${message.id.logId} extracted from batch." }
+            val connection = TransportKafkaConnection(config, factory, messageProcessor, eventSender, KafkaClientsFactory(config))
+                .apply { resources += "transport kafka connection" to ::close }
 
-                val bookName = message.bookName
-                if (bookName.isNotEmpty() && bookName != factory.boxConfiguration.bookName) {
-                    val errorText = "Expected bookName: '${factory.boxConfiguration.bookName}', actual '$bookName' in message ${message.id.logId}"
-                    LOGGER.error { errorText }
-                    eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED)
-                    continue
-                }
+            Executors.newSingleThreadExecutor().apply {
+                resources += "transport connection executor" to { this.shutdownNow() }
+                execute(connection)
+            }
 
-                runCatching {
-                    connection.publish(message)
-                }.onFailure {
-                    val errorText = "Could not publish message ${message.id.logId}. Consumer tag ${metadata.consumerTag}"
-                    LOGGER.error(it) { errorText }
-                    eventSender.onEvent(errorText, "SendError", message, it)
+            val transportListener: (DeliveryMetadata, GroupBatch) -> Unit = { metadata, batch ->
+                LOGGER.trace { "Transport batch with ${batch.groups.size} groups received from MQ"}
+                for (group in batch.groups) {
+                    if (group.messages.size != 1) {
+                        val errorText = "Transport message group must contain only one message. Consumer tag ${metadata.consumerTag}"
+                        LOGGER.error { errorText }
+                        eventSender.onEvent(errorText, "SendError")
+                        break
+                    }
+
+                    val message = group.messages[0]
+                    LOGGER.trace { "Message ${message.id.logId} extracted from batch." }
+
+                    if (message !is RawMessage) {
+                        val errorText = "Transport message ${message.id.logId} is not a raw message. Consumer tag ${metadata.consumerTag}"
+                        LOGGER.error { errorText }
+                        eventSender.onEvent(errorText, "SendError")
+                        break
+                    }
+
+                    runCatching {
+                        connection.publish(message)
+                    }.onFailure {
+                        val errorText = "Could not publish message ${message.id.logId}. Consumer tag ${metadata.consumerTag}"
+                        LOGGER.error(it) { errorText }
+                        eventSender.onEvent(errorText, "SendError", message.id.toProto(batch), it)
+                    }
                 }
             }
+            { transportRouter.subscribeAll(transportListener, INPUT_QUEUE_ATTRIBUTE ) }
+        } else {
+            val messageRouterRawBatch = factory.messageRouterRawBatch
+            val messageProcessor = ProtoRawMessageProcessor(config.batchSize, config.timeSpan, config.timeSpanUnit, factory.boxConfiguration.bookName, config.aliasToSessionGroup) {
+                LOGGER.trace { "Sending batch with ${it.messagesCount} messages to MQ." }
+                it.runCatching(messageRouterRawBatch::send)
+                    .onFailure { e -> LOGGER.error(e) {
+                        it.messagesOrBuilderList
+                        "Could not send message batch to MQ: ${it.toJson()}" }
+                    }
+            }.apply { resources += "proto message processor" to ::close }
+
+            val connection = ProtoKafkaConnection(config, factory, messageProcessor, eventSender, KafkaClientsFactory(config))
+                    .apply { resources += "proto kafka connection" to ::close }
+
+            Executors.newSingleThreadExecutor().apply {
+                resources += "proto connection executor" to { this.shutdownNow() }
+                execute(connection)
+            }
+
+            val protoListener: (DeliveryMetadata, ProtoRawMessageBatch) -> Unit = { metadata, batch ->
+
+                LOGGER.trace { "Proto batch with ${batch.messagesCount} messages received from MQ" }
+                for (message in batch.messagesList) {
+                    LOGGER.trace { "Message ${message.id.logId} extracted from batch." }
+
+                    val bookName = message.bookName
+                    if (bookName.isNotEmpty() && bookName != factory.boxConfiguration.bookName) {
+                        val errorText =
+                            "Expected bookName: '${factory.boxConfiguration.bookName}', actual '$bookName' in message ${message.id.logId}"
+                        LOGGER.error { errorText }
+                        eventSender.onEvent(errorText, "Error", status = Event.Status.FAILED)
+                        continue
+                    }
+
+                    runCatching {
+                        connection.publish(message)
+                    }.onFailure {
+                        val errorText =
+                            "Could not publish message ${message.id.logId}. Consumer tag ${metadata.consumerTag}"
+                        LOGGER.error(it) { errorText }
+                        eventSender.onEvent(errorText, "SendError", message.id, it)
+                    }
+                }
+            }
+            { messageRouterRawBatch.subscribeAll(protoListener, INPUT_QUEUE_ATTRIBUTE) }
         }
 
-        runCatching {
-            messageRouterRawBatch.subscribeAll(mqListener, INPUT_QUEUE_ATTRIBUTE)
-        }.onSuccess {
-            resources += "queue listener" to it::unsubscribe
-        }.onFailure {
-            throw IllegalStateException("Failed to subscribe to input queue", it)
-        }
+        runCatching(subscribe)
+            .onSuccess { resources += "queue listener" to it::unsubscribe }
+            .onFailure { throw IllegalStateException("Failed to subscribe to input queue", it) }
     }.onFailure {
         LOGGER.error(it) { "Error during working with Kafka connection. Exiting the program" }
         exitProcess(2)
@@ -127,7 +178,7 @@ fun main(args: Array<String>) {
 
 class EventSender(
     private val eventRouter: MessageRouter<EventBatch>,
-    private val rootEventId: EventID,
+    private val rootEventId: ProtoEventID,
     config: Config
 ) : AutoCloseable {
     private val batchSenderExecutor = Executors.newSingleThreadScheduledExecutor()
@@ -145,10 +196,10 @@ class EventSender(
     fun onEvent(
         name: String,
         type: String,
-        message: RawMessage? = null,
+        messageId: ProtoMessageID? = null,
         exception: Throwable? = null,
         status: Event.Status? = null,
-        parentEventId: EventID? = null
+        parentEventId: ProtoEventID? = null
     ) {
         val event = Event
             .start()
@@ -156,8 +207,8 @@ class EventSender(
             .name(name)
             .type(type)
 
-        if (message != null) {
-            event.messageID(message.id)
+        if (messageId != null) {
+            event.messageID(messageId)
         }
 
         if (exception != null) {
@@ -173,7 +224,6 @@ class EventSender(
 
     override fun close() {
         eventBatcher.close()
-        batchSenderExecutor.shutdown()
-        batchSenderExecutor.awaitTermination(10, TimeUnit.SECONDS)
+        batchSenderExecutor.shutdownGracefully(timeout = 10, unit = TimeUnit.SECONDS)
     }
 }

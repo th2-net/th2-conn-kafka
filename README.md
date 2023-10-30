@@ -1,12 +1,12 @@
-# KafkaConnect (0.2.0)
+# KafkaConnect (0.3.0)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
-
 This configuration should be specified in the custom configuration block in schema editor.
+
 ```yaml
   customConfig:
-
+    useTransport: true
     aliasToTopic:
       session_alias_01:
         topic: "topic_01"
@@ -46,6 +46,7 @@ This configuration should be specified in the custom configuration block in sche
 ```
 
 Parameters:
++ useTransport - use th2 transport or protobuf protocol to publish incoming/outgoing messages (false by default)
 + aliasToTopic - matches th2 sessions with Kafka topics **Note: Kafka does not guarantee message ordering within topic if topic contains more than one partition**
 + aliasToTopicAndKey - matches th2 sessions with Kafka topics and keys **Note: Kafka guarantees message ordering only within messages with the same non null key if topic contains more than one partition**
 + sessionGroups - match session group with sessions (key: session group, value: list of session aliases)
@@ -87,17 +88,19 @@ If the consumer loses connection to which one, then it will try to reconnect to 
 
 ## Pins
 
-Messages that were received to 'to_send' pin will be send to Kafka.
+Messages that were received to 'to_send' pin will be sent to Kafka.
 Messages that were received from / sent to the Kafka will be sent to the `out_raw` pin:
 
 Example of pins configuration:
 
+protobuf
 ```yaml
 spec:
   imageName: ghcr.io/th2-net/th2-conn-kafka
-  imageVersion: 0.2.0
+  imageVersion: 0.3.0
   type: th2-conn
-
+  customConfig:
+    useTransport: false
   pins:
     mq:
       subscribers:
@@ -112,10 +115,38 @@ spec:
           attributes: ["raw", "publish", "store"]
 ```
 
+th2 transport
+```yaml
+spec:
+  imageName: ghcr.io/th2-net/th2-conn-kafka
+  imageVersion: 0.3.0
+  type: th2-conn
+  customConfig:
+    useTransport: true
+  pins:
+    mq:
+      subscribers:
+        - name: to_send
+          attributes: ["send", "transport-group", "subscribe"]
+          linkTo:
+            - box: script
+              pin: to_conn
+
+      publishers:
+        - name: out_raw
+          attributes: ["transport-group", "publish"]
+```
+
 ## Release notes
 
-### 0.2.0
+### 0.3.0
++ TH2 transport protocol support
+  Updated bom: `4.5.0`
++ Updated common: `5.4.0-dev`
++ Updated common-utils: `2.1.1-dev`
++ Updated kafka-clients: `3.5.1`
 
+### 0.2.0
 + Secure connection support
 + Kafka batching settings
 + Message events publishing setting
@@ -126,7 +157,6 @@ spec:
 + bump library versions
 
 ### 0.1.0
-
 + Migrated to Books & Pages concept
 
 ### 0.0.4
@@ -134,15 +164,12 @@ spec:
 + th2-bom upgrade to `4.2.0`
 
 ### 0.0.3
-
 + Publishing to Kafka support
 + Kafka keys support
 + Session groups support
 
 ### 0.0.2
-
 + Reusable workflow with dependency check
 
 ### 0.0.1
-
 + Initial version
