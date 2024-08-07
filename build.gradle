@@ -1,97 +1,30 @@
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
-plugins {
-    id 'application'
-    id 'com.palantir.docker' version '0.25.0'
-    id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
-    id "org.owasp.dependencycheck" version "8.1.2"
-}
-
-group 'com.exactpro.th2'
-version release_version
-
-sourceCompatibility = JavaVersion.VERSION_11
-targetCompatibility = JavaVersion.VERSION_11
-
-repositories {
-    mavenCentral()
-    maven {
-        name 'Sonatype_snapshots'
-        url 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
+buildscript {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            url = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+        }
     }
-    maven {
-        name 'Sonatype_releases'
-        url 'https://s01.oss.sonatype.org/content/repositories/releases/'
-    }
-
-    configurations.configureEach {
-        resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
-        resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
+    dependencies {
+        classpath "com.exactpro.th2:th2-gradle-plugin:0.0.1-dev-5915772757-13a28ae-SNAPSHOT"
     }
 }
 
-jar {
-    manifest {
-        attributes(
-                'Created-By':               "${System.getProperty('java.version')} (${System.getProperty('java.vendor')})",
-                'Specification-Title':      '',
-                'Specification-Vendor':     'Exactpro Systems LLC',
-                'Implementation-Title':     project.archivesBaseName,
-                'Implementation-Vendor':    'Exactpro Systems LLC',
-                'Implementation-Vendor-Id': 'com.exactpro',
-                'Implementation-Version':   project.version
-        )
-    }
-}
+apply plugin: "com.exactpro.th2.common-conventions"
+apply plugin: "com.exactpro.th2.docker-conventions"
 
 dependencies {
-    api platform("com.exactpro.th2:bom:4.3.0")
-    implementation "com.exactpro.th2:common:5.2.1-dev"
-    implementation "com.exactpro.th2:common-utils:2.0.0-dev"
+    api platform("com.exactpro.th2:bom:4.5.0")
+    implementation "com.exactpro.th2:common:5.4.0-dev"
+    implementation "com.exactpro.th2:common-utils:2.2.0-dev"
 
-    implementation "org.apache.kafka:kafka-clients:3.4.1"
+    implementation "org.apache.kafka:kafka-clients:3.5.1"
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
 
     testImplementation "org.jetbrains.kotlin:kotlin-test-junit5"
     testImplementation "org.mockito.kotlin:mockito-kotlin:5.0.0"
     testImplementation "org.mockito:mockito-inline:5.2.0"
     testImplementation "org.assertj:assertj-core:3.24.2"
-}
-
-test {
-    useJUnitPlatform()
-}
-
-applicationName = 'service'
-
-application {
-    mainClass = 'com.exactpro.th2.kafka.client.Main'
-}
-
-distTar {
-    archiveFileName = "${applicationName}.tar"
-}
-
-dockerPrepare {
-    dependsOn distTar
-}
-
-docker {
-    copySpec.from(tarTree("$buildDir/distributions/${applicationName}.tar"))
-}
-
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions.jvmTarget = JavaVersion.VERSION_11
-}
-
-dependencyCheck {
-    formats=['SARIF', 'JSON', 'HTML']
-    failBuildOnCVSS=5
-
-    analyzers {
-        assemblyEnabled = false
-        nugetconfEnabled = false
-        nodeEnabled = false
-    }
 }
 
 configurations {
