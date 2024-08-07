@@ -1,34 +1,66 @@
-buildscript {
-    repositories {
-        gradlePluginPortal()
-        maven {
-            url = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+plugins {
+    id "org.jetbrains.kotlin.jvm" version "$kotlin_version"
+    id "application"
+    id "com.exactpro.th2.gradle.component" version "0.1.1"
+}
+
+group = 'com.exactpro.th2'
+version = release_version
+
+kotlin.jvmToolchain(11)
+
+repositories {
+    maven {
+        name 'Sonatype_snapshots'
+        url 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
+    }
+
+    maven {
+        name 'Sonatype_snapshots'
+        url 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
+        metadataSources {
+            mavenPom()
+            artifact()
         }
     }
-    dependencies {
-        classpath "com.exactpro.th2:th2-gradle-plugin:0.0.1-dev-5915772757-13a28ae-SNAPSHOT"
+
+    maven {
+        name 'Sonatype_releases'
+        url 'https://s01.oss.sonatype.org/content/repositories/releases/'
+    }
+
+    maven {
+        name 'Sonatype_releases'
+        url 'https://s01.oss.sonatype.org/content/repositories/releases/'
+        metadataSources {
+            mavenPom()
+            artifact()
+        }
+    }
+
+    mavenCentral()
+    mavenLocal()
+
+    configurations.configureEach {
+        resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+        resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
     }
 }
 
-apply plugin: "com.exactpro.th2.common-conventions"
-apply plugin: "com.exactpro.th2.docker-conventions"
-
 dependencies {
-    api platform("com.exactpro.th2:bom:4.5.0")
-    implementation "com.exactpro.th2:common:5.4.0-dev"
-    implementation "com.exactpro.th2:common-utils:2.2.0-dev"
+    implementation "com.exactpro.th2:common:5.14.0-dev"
+    implementation "com.exactpro.th2:common-utils:2.2.3-dev"
 
-    implementation "org.apache.kafka:kafka-clients:3.5.1"
+    implementation "io.github.oshai:kotlin-logging:5.1.4"
+
+    implementation "org.apache.kafka:kafka-clients:3.8.0"
     implementation 'com.fasterxml.jackson.core:jackson-databind'
 
     testImplementation "org.jetbrains.kotlin:kotlin-test-junit5"
-    testImplementation "org.mockito.kotlin:mockito-kotlin:5.0.0"
+    testImplementation "org.mockito.kotlin:mockito-kotlin:5.4.0"
     testImplementation "org.mockito:mockito-inline:5.2.0"
-    testImplementation "org.assertj:assertj-core:3.24.2"
+    testImplementation "org.assertj:assertj-core:3.26.3"
 }
 
-configurations {
-    compileClasspath {
-        resolutionStrategy.activateDependencyLocking()
-    }
-}
+test.useJUnitPlatform()
+application.mainClass = "com.exactpro.th2.kafka.client.Main"

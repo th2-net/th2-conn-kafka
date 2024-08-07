@@ -27,7 +27,7 @@ import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.common.utils.message.toTimestamp
 import com.exactpro.th2.common.utils.message.transport.logId
-import mu.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
