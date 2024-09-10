@@ -140,9 +140,9 @@ spec:
 ## Release notes
 
 ### 0.4.0
-+ Migrated to th2 gradle plugin `0.1.1` (bom: `4.6.1`)
++ Migrated to th2 gradle plugin `0.1.2` (bom: `4.7.0`)
 + Updated common: `5.14.0-dev`
-+ Updated common-utils `2.2.3-dev`
++ Updated common-utils `2.3.0-dev`
 + Updated workflows
 
 ### 0.3.0
