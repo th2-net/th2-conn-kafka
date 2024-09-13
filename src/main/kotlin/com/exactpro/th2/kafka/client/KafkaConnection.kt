@@ -26,7 +26,7 @@ import com.exactpro.th2.common.utils.message.logId
 import com.exactpro.th2.common.utils.message.transport.logId
 import com.exactpro.th2.common.utils.message.transport.toProto
 import com.google.protobuf.UnsafeByteOperations
-import mu.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.admin.AdminClient
 import org.apache.kafka.clients.admin.AdminClientConfig
 import org.apache.kafka.clients.admin.NewTopic
@@ -85,7 +85,7 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
             val (outMessage, sessionGroup) = messageFuture.get()
             if (exception == null) {
                 val msgText = "Message '${outMessage.logId}' sent to Kafka"
-                LOGGER.info(msgText)
+                LOGGER.info { msgText }
                 if (config.messagePublishingEvents) {
                     eventSender.onEvent(msgText, "Send message", outMessage.toProtoMessageId(sessionGroup))
                 }
@@ -147,7 +147,7 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
             if (records.isEmpty) {
                 if (config.kafkaConnectionEvents && !isKafkaAvailable()) {
                     val failedToConnectMessage = "Failed to connect Kafka"
-                    LOGGER.error(failedToConnectMessage)
+                    LOGGER.error { failedToConnectMessage }
                     eventSender.onEvent(failedToConnectMessage, CONNECTIVITY_EVENT_TYPE, status = Event.Status.FAILED)
 
                     while (!Thread.currentThread().isInterrupted && !isKafkaAvailable()) {
@@ -156,7 +156,7 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
 
                     if (!Thread.currentThread().isInterrupted) {
                         val connectionRestoredMessage = "Kafka connection restored"
-                        LOGGER.info(connectionRestoredMessage)
+                        LOGGER.info { connectionRestoredMessage }
                         eventSender.onEvent(connectionRestoredMessage, CONNECTIVITY_EVENT_TYPE)
                     }
                 }
@@ -219,12 +219,12 @@ abstract class KafkaConnection<MESSAGE, MESSAGE_BUILDER>(
             }
         }
     } catch (e: InterruptedException) {
-        LOGGER.info("Polling thread interrupted")
+        LOGGER.info { "Polling thread interrupted" }
     } catch (e: InterruptException) {
-        LOGGER.info("Polling thread interrupted")
+        LOGGER.info { "Polling thread interrupted" }
     } catch (e: Exception) {
         val errorMessage = "Failed to read messages from Kafka"
-        LOGGER.error(errorMessage, e)
+        LOGGER.error(e) { errorMessage }
         eventSender.onEvent(errorMessage, "Error", exception = e)
     } finally {
         Thread.interrupted()

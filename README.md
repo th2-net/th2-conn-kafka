@@ -1,4 +1,4 @@
-# KafkaConnect (0.3.0)
+# KafkaConnect (0.4.0)
 The "KafkaConnect" component is responsible for the communication with Kafka;
 
 ## Configuration
@@ -97,7 +97,7 @@ protobuf
 ```yaml
 spec:
   imageName: ghcr.io/th2-net/th2-conn-kafka
-  imageVersion: 0.3.0
+  imageVersion: 0.4.0
   type: th2-conn
   customConfig:
     useTransport: false
@@ -138,6 +138,12 @@ spec:
 ```
 
 ## Release notes
+
+### 0.4.0
++ Migrated to th2 gradle plugin `0.1.2` (bom: `4.7.0`)
++ Updated common: `5.14.0-dev`
++ Updated common-utils `2.3.0-dev`
++ Updated workflows
 
 ### 0.3.0
 + TH2 transport protocol support
